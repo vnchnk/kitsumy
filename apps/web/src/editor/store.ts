@@ -7,15 +7,20 @@ import {
   ImageElement,
   NarrativeElement,
   DialogueElement,
+  Canvas,
+  PaperSize,
+  CanvasLayout,
+  PAPER_SIZES,
 } from './types';
 
 interface HistoryEntry {
-  elements: CanvasElement[];
+  canvases: Canvas[];
   timestamp: number;
 }
 
 interface EditorState {
   project: EditorProject | null;
+  activeCanvasId: string | null;
   selectedIds: string[];
   tool: Tool;
   zoom: number;
@@ -25,13 +30,21 @@ interface EditorState {
   history: HistoryEntry[];
   historyIndex: number;
 
-  // Actions
+  // Project actions
   initProject: (id: string) => void;
   setProjectTitle: (title: string) => void;
-  setCanvasSize: (width: number, height: number) => void;
-  setBackgroundColor: (color: string) => void;
+  setPaperSize: (size: PaperSize) => void;
+  setLayout: (layout: CanvasLayout) => void;
 
-  // Element actions
+  // Canvas actions
+  addCanvas: () => void;
+  removeCanvas: (id: string) => void;
+  setActiveCanvas: (id: string) => void;
+  updateCanvas: (id: string, updates: Partial<Canvas>) => void;
+  reorderCanvas: (id: string, newOrder: number) => void;
+  duplicateCanvas: (id: string) => void;
+
+  // Element actions (operate on active canvas)
   addElement: (type: ElementType, x: number, y: number) => void;
   updateElement: (id: string, updates: Partial<CanvasElement>) => void;
   deleteElement: (id: string) => void;
@@ -45,7 +58,7 @@ interface EditorState {
   moveUp: (id: string) => void;
   moveDown: (id: string) => void;
 
-// Tool/View
+  // Tool/View
   setTool: (tool: Tool) => void;
   setZoom: (zoom: number) => void;
   setPanOffset: (offset: { x: number; y: number }) => void;
@@ -60,6 +73,9 @@ interface EditorState {
   // Export
   exportJSON: () => string;
   importJSON: (json: string) => void;
+
+  // Helpers
+  getActiveCanvas: () => Canvas | null;
 }
 
 const createId = () => Math.random().toString(36).slice(2, 11);
@@ -123,18 +139,28 @@ const createDefaultDialogue = (x: number, y: number, zIndex: number): DialogueEl
   bubbleStyle: 'round',
 });
 
+const createDefaultCanvas = (order: number, paperSize: PaperSize): Canvas => {
+  const size = PAPER_SIZES[paperSize];
+  return {
+    id: createId(),
+    name: '',
+    elements: [],
+    width: size.width,
+    height: size.height,
+    backgroundColor: '#ffffff',
+    order,
+  };
+};
+
 const saveProject = (project: EditorProject) => {
   localStorage.setItem(`kitsumy-project-${project.id}`, JSON.stringify(project));
 };
 
 const MAX_HISTORY = 50;
 
-const pushHistory = (state: EditorState, elements: CanvasElement[]): Partial<EditorState> => {
-  // Remove any redo history after current index
+const pushHistory = (state: EditorState, canvases: Canvas[]): Partial<EditorState> => {
   const newHistory = state.history.slice(0, state.historyIndex + 1);
-  // Add new entry
-  newHistory.push({ elements: JSON.parse(JSON.stringify(elements)), timestamp: Date.now() });
-  // Limit history size
+  newHistory.push({ canvases: JSON.parse(JSON.stringify(canvases)), timestamp: Date.now() });
   if (newHistory.length > MAX_HISTORY) {
     newHistory.shift();
   }
@@ -146,6 +172,7 @@ const pushHistory = (state: EditorState, elements: CanvasElement[]): Partial<Edi
 
 export const useEditorStore = create<EditorState>((set, get) => ({
   project: null,
+  activeCanvasId: null,
   selectedIds: [],
   tool: 'select',
   zoom: 1,
@@ -156,81 +183,39 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   initProject: (id) => {
     const saved = localStorage.getItem(`kitsumy-project-${id}`);
     if (saved) {
-      const project = JSON.parse(saved);
-      // Migration from old panel-based format
-      if (project.panels && !project.elements) {
-        const elements: CanvasElement[] = [];
-        let zIndex = 0;
-        project.panels.forEach((panel: any) => {
-          // Convert panel to image element
-          elements.push({
-            ...createDefaultImage(panel.x, panel.y, zIndex++),
-            width: panel.width,
-            height: panel.height,
-            rotation: panel.rotation || 0,
-            imageUrl: panel.imageUrl || '',
-            sepiaLevel: panel.sepiaLevel || 0.15,
-            clipVariant: panel.clipVariant || 0,
-          });
-          // Convert panel elements
-          if (panel.elements) {
-            panel.elements.forEach((el: any) => {
-              if (el.type === 'narrative') {
-                elements.push({
-                  ...createDefaultNarrative(
-                    panel.x + (panel.width * el.x) / 100,
-                    panel.y + (panel.height * el.y) / 100,
-                    zIndex++
-                  ),
-                  text: el.text,
-                  bgColor: el.bgColor || '#fff133',
-                  textColor: el.textColor || '#000000',
-                  borderColor: el.borderColor || '#000000',
-                  fontSize: el.fontSize || 14,
-                  rotation: el.rotation || -1,
-                });
-              } else if (el.type === 'dialogue') {
-                elements.push({
-                  ...createDefaultDialogue(
-                    panel.x + (panel.width * el.x) / 100,
-                    panel.y + (panel.height * el.y) / 100,
-                    zIndex++
-                  ),
-                  speaker: el.speaker || 'CHARACTER',
-                  text: el.text,
-                  bgColor: el.bgColor || '#ffffff',
-                  textColor: el.textColor || '#000000',
-                  borderColor: el.borderColor || '#000000',
-                  fontSize: el.fontSize || 14,
-                  rotation: el.rotation || 0,
-                  tailPosition: el.tailPosition || 'bottom-left',
-                });
-              }
-            });
-          }
+      const project = JSON.parse(saved) as EditorProject;
+      
+      // Valid project with canvases
+      if (project.canvases && project.canvases.length > 0) {
+        const initialHistory = [{ canvases: JSON.parse(JSON.stringify(project.canvases)), timestamp: Date.now() }];
+        set({ 
+          project, 
+          activeCanvasId: project.canvases[0].id,
+          history: initialHistory, 
+          historyIndex: 0 
         });
-        project.elements = elements;
-        delete project.panels;
-        project.backgroundColor = project.backgroundColor || '#1a1a1a';
+        return;
       }
-      const initialHistory = [{ elements: JSON.parse(JSON.stringify(project.elements)), timestamp: Date.now() }];
-      set({ project, history: initialHistory, historyIndex: 0 });
-    } else {
-      set({
-        project: {
-          id,
-          title: 'Untitled Comic',
-          elements: [],
-          canvasWidth: 2400,
-          canvasHeight: 3200,
-          backgroundColor: '#1a1a1a',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-        history: [{ elements: [], timestamp: Date.now() }],
-        historyIndex: 0,
-      });
     }
+    
+    // Create new project
+    const defaultCanvas = createDefaultCanvas(0, 'A4');
+    const project: EditorProject = {
+      id,
+      title: 'Untitled Comic',
+      canvases: [defaultCanvas],
+      paperSize: 'A4',
+      layout: 'horizontal',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    saveProject(project);
+    set({
+      project,
+      activeCanvasId: defaultCanvas.id,
+      history: [{ canvases: [defaultCanvas], timestamp: Date.now() }],
+      historyIndex: 0,
+    });
   },
 
   setProjectTitle: (title) => {
@@ -242,13 +227,92 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
   },
 
-  setCanvasSize: (width, height) => {
+  setPaperSize: (paperSize) => {
     set((state) => {
       if (!state.project) return state;
+      const size = PAPER_SIZES[paperSize];
+      const updatedCanvases = state.project.canvases.map(c => ({
+        ...c,
+        width: size.width,
+        height: size.height,
+      }));
+      const updated = { 
+        ...state.project, 
+        paperSize, 
+        canvases: updatedCanvases,
+        updatedAt: new Date().toISOString() 
+      };
+      saveProject(updated);
+      return { project: updated, ...pushHistory(state, updatedCanvases) };
+    });
+  },
+
+  setLayout: (layout) => {
+    set((state) => {
+      if (!state.project) return state;
+      const updated = { ...state.project, layout, updatedAt: new Date().toISOString() };
+      saveProject(updated);
+      return { project: updated };
+    });
+  },
+
+  addCanvas: () => {
+    set((state) => {
+      if (!state.project) return state;
+      const newCanvas = createDefaultCanvas(state.project.canvases.length, state.project.paperSize);
+      const updatedCanvases = [...state.project.canvases, newCanvas];
       const updated = {
         ...state.project,
-        canvasWidth: width,
-        canvasHeight: height,
+        canvases: updatedCanvases,
+        updatedAt: new Date().toISOString(),
+      };
+      saveProject(updated);
+      return { 
+        project: updated, 
+        activeCanvasId: newCanvas.id,
+        selectedIds: [],
+        ...pushHistory(state, updatedCanvases) 
+      };
+    });
+  },
+
+  removeCanvas: (id) => {
+    set((state) => {
+      if (!state.project || state.project.canvases.length <= 1) return state;
+      const updatedCanvases = state.project.canvases
+        .filter(c => c.id !== id)
+        .map((c, i) => ({ ...c, order: i }));
+      const updated = {
+        ...state.project,
+        canvases: updatedCanvases,
+        updatedAt: new Date().toISOString(),
+      };
+      saveProject(updated);
+      const newActiveId = state.activeCanvasId === id 
+        ? updatedCanvases[0]?.id || null 
+        : state.activeCanvasId;
+      return { 
+        project: updated, 
+        activeCanvasId: newActiveId,
+        selectedIds: [],
+        ...pushHistory(state, updatedCanvases) 
+      };
+    });
+  },
+
+  setActiveCanvas: (id) => {
+    set({ activeCanvasId: id, selectedIds: [] });
+  },
+
+  updateCanvas: (id, updates) => {
+    set((state) => {
+      if (!state.project) return state;
+      const updatedCanvases = state.project.canvases.map(c =>
+        c.id === id ? { ...c, ...updates } : c
+      );
+      const updated = {
+        ...state.project,
+        canvases: updatedCanvases,
         updatedAt: new Date().toISOString(),
       };
       saveProject(updated);
@@ -256,19 +320,69 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
   },
 
-  setBackgroundColor: (color) => {
+  reorderCanvas: (id, newOrder) => {
     set((state) => {
       if (!state.project) return state;
-      const updated = { ...state.project, backgroundColor: color, updatedAt: new Date().toISOString() };
+      const canvas = state.project.canvases.find(c => c.id === id);
+      if (!canvas) return state;
+      
+      const otherCanvases = state.project.canvases.filter(c => c.id !== id);
+      otherCanvases.splice(newOrder, 0, canvas);
+      const updatedCanvases = otherCanvases.map((c, i) => ({ ...c, order: i }));
+      
+      const updated = {
+        ...state.project,
+        canvases: updatedCanvases,
+        updatedAt: new Date().toISOString(),
+      };
       saveProject(updated);
       return { project: updated };
     });
   },
 
-  addElement: (type, x, y) => {
+  duplicateCanvas: (id) => {
     set((state) => {
       if (!state.project) return state;
-      const zIndex = getMaxZIndex(state.project.elements) + 1;
+      const canvas = state.project.canvases.find(c => c.id === id);
+      if (!canvas) return state;
+      
+      const newCanvas: Canvas = {
+        ...canvas,
+        id: createId(),
+        name: '',
+        order: state.project.canvases.length,
+        elements: canvas.elements.map(el => ({ ...el, id: createId() })),
+      };
+      
+      const updatedCanvases = [...state.project.canvases, newCanvas];
+      const updated = {
+        ...state.project,
+        canvases: updatedCanvases,
+        updatedAt: new Date().toISOString(),
+      };
+      saveProject(updated);
+      return { 
+        project: updated, 
+        activeCanvasId: newCanvas.id,
+        selectedIds: [],
+        ...pushHistory(state, updatedCanvases) 
+      };
+    });
+  },
+
+  getActiveCanvas: () => {
+    const { project, activeCanvasId } = get();
+    if (!project || !activeCanvasId) return null;
+    return project.canvases.find(c => c.id === activeCanvasId) || null;
+  },
+
+  // Element actions - operate on active canvas
+  addElement: (type, x, y) => {
+    set((state) => {
+      const canvas = get().getActiveCanvas();
+      if (!state.project || !canvas) return state;
+      
+      const zIndex = getMaxZIndex(canvas.elements) + 1;
       let newElement: CanvasElement;
 
       switch (type) {
@@ -283,25 +397,32 @@ export const useEditorStore = create<EditorState>((set, get) => ({
           break;
       }
 
-      const newElements = [...state.project.elements, newElement];
+      const updatedCanvases = state.project.canvases.map(c =>
+        c.id === canvas.id ? { ...c, elements: [...c.elements, newElement] } : c
+      );
       const updated = {
         ...state.project,
-        elements: newElements,
+        canvases: updatedCanvases,
         updatedAt: new Date().toISOString(),
       };
       saveProject(updated);
-      return { project: updated, selectedIds: [newElement.id], tool: 'select', ...pushHistory(state, newElements) };
+      return { project: updated, selectedIds: [newElement.id], tool: 'select', ...pushHistory(state, updatedCanvases) };
     });
   },
 
   updateElement: (id, updates) => {
     set((state) => {
-      if (!state.project) return state;
+      const canvas = get().getActiveCanvas();
+      if (!state.project || !canvas) return state;
+      
+      const updatedCanvases = state.project.canvases.map(c =>
+        c.id === canvas.id 
+          ? { ...c, elements: c.elements.map(el => el.id === id ? { ...el, ...updates } : el) as CanvasElement[] }
+          : c
+      );
       const updated = {
         ...state.project,
-        elements: state.project.elements.map((el) =>
-          el.id === id ? { ...el, ...updates } : el
-        ) as CanvasElement[],
+        canvases: updatedCanvases,
         updatedAt: new Date().toISOString(),
       };
       saveProject(updated);
@@ -311,33 +432,41 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   deleteElement: (id) => {
     set((state) => {
-      if (!state.project) return state;
-      const newElements = state.project.elements.filter((el) => el.id !== id);
+      const canvas = get().getActiveCanvas();
+      if (!state.project || !canvas) return state;
+      
+      const updatedCanvases = state.project.canvases.map(c =>
+        c.id === canvas.id ? { ...c, elements: c.elements.filter(el => el.id !== id) } : c
+      );
       const updated = {
         ...state.project,
-        elements: newElements,
+        canvases: updatedCanvases,
         updatedAt: new Date().toISOString(),
       };
       saveProject(updated);
       return {
         project: updated,
-        selectedIds: state.selectedIds.filter((sid) => sid !== id),
-        ...pushHistory(state, newElements),
+        selectedIds: state.selectedIds.filter(sid => sid !== id),
+        ...pushHistory(state, updatedCanvases),
       };
     });
   },
 
   deleteSelected: () => {
     set((state) => {
-      if (!state.project || state.selectedIds.length === 0) return state;
-      const newElements = state.project.elements.filter((el) => !state.selectedIds.includes(el.id));
+      const canvas = get().getActiveCanvas();
+      if (!state.project || !canvas || state.selectedIds.length === 0) return state;
+      
+      const updatedCanvases = state.project.canvases.map(c =>
+        c.id === canvas.id ? { ...c, elements: c.elements.filter(el => !state.selectedIds.includes(el.id)) } : c
+      );
       const updated = {
         ...state.project,
-        elements: newElements,
+        canvases: updatedCanvases,
         updatedAt: new Date().toISOString(),
       };
       saveProject(updated);
-      return { project: updated, selectedIds: [], ...pushHistory(state, newElements) };
+      return { project: updated, selectedIds: [], ...pushHistory(state, updatedCanvases) };
     });
   },
 
@@ -347,7 +476,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         const isSelected = state.selectedIds.includes(id);
         return {
           selectedIds: isSelected
-            ? state.selectedIds.filter((sid) => sid !== id)
+            ? state.selectedIds.filter(sid => sid !== id)
             : [...state.selectedIds, id],
         };
       }
@@ -356,23 +485,24 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   selectAll: () => {
-    set((state) => {
-      if (!state.project) return state;
-      return { selectedIds: state.project.elements.map((el) => el.id) };
-    });
+    const canvas = get().getActiveCanvas();
+    if (!canvas) return;
+    set({ selectedIds: canvas.elements.map(el => el.id) });
   },
 
   clearSelection: () => set({ selectedIds: [] }),
 
   duplicateSelected: () => {
     set((state) => {
-      if (!state.project || state.selectedIds.length === 0) return state;
-      const maxZ = getMaxZIndex(state.project.elements);
+      const canvas = get().getActiveCanvas();
+      if (!state.project || !canvas || state.selectedIds.length === 0) return state;
+      
+      const maxZ = getMaxZIndex(canvas.elements);
       const newElements: CanvasElement[] = [];
       const newIds: string[] = [];
 
       state.selectedIds.forEach((id, i) => {
-        const el = state.project!.elements.find((e) => e.id === id);
+        const el = canvas.elements.find(e => e.id === id);
         if (el) {
           const newEl = {
             ...el,
@@ -386,26 +516,33 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         }
       });
 
-      const allElements = [...state.project.elements, ...newElements];
+      const updatedCanvases = state.project.canvases.map(c =>
+        c.id === canvas.id ? { ...c, elements: [...c.elements, ...newElements] } : c
+      );
       const updated = {
         ...state.project,
-        elements: allElements,
+        canvases: updatedCanvases,
         updatedAt: new Date().toISOString(),
       };
       saveProject(updated);
-      return { project: updated, selectedIds: newIds, ...pushHistory(state, allElements) };
+      return { project: updated, selectedIds: newIds, ...pushHistory(state, updatedCanvases) };
     });
   },
 
   bringToFront: (id) => {
     set((state) => {
-      if (!state.project) return state;
-      const maxZ = getMaxZIndex(state.project.elements);
+      const canvas = get().getActiveCanvas();
+      if (!state.project || !canvas) return state;
+      
+      const maxZ = getMaxZIndex(canvas.elements);
+      const updatedCanvases = state.project.canvases.map(c =>
+        c.id === canvas.id
+          ? { ...c, elements: c.elements.map(el => el.id === id ? { ...el, zIndex: maxZ + 1 } : el) as CanvasElement[] }
+          : c
+      );
       const updated = {
         ...state.project,
-        elements: state.project.elements.map((el) =>
-          el.id === id ? { ...el, zIndex: maxZ + 1 } : el
-        ) as CanvasElement[],
+        canvases: updatedCanvases,
         updatedAt: new Date().toISOString(),
       };
       saveProject(updated);
@@ -415,13 +552,18 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   sendToBack: (id) => {
     set((state) => {
-      if (!state.project) return state;
-      const minZ = Math.min(...state.project.elements.map((el) => el.zIndex));
+      const canvas = get().getActiveCanvas();
+      if (!state.project || !canvas) return state;
+      
+      const minZ = Math.min(...canvas.elements.map(el => el.zIndex));
+      const updatedCanvases = state.project.canvases.map(c =>
+        c.id === canvas.id
+          ? { ...c, elements: c.elements.map(el => el.id === id ? { ...el, zIndex: minZ - 1 } : el) as CanvasElement[] }
+          : c
+      );
       const updated = {
         ...state.project,
-        elements: state.project.elements.map((el) =>
-          el.id === id ? { ...el, zIndex: minZ - 1 } : el
-        ) as CanvasElement[],
+        canvases: updatedCanvases,
         updatedAt: new Date().toISOString(),
       };
       saveProject(updated);
@@ -431,14 +573,17 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   moveUp: (id) => {
     set((state) => {
-      if (!state.project) return state;
-      const el = state.project.elements.find((e) => e.id === id);
-      if (!el) return state;
+      const canvas = get().getActiveCanvas();
+      if (!state.project || !canvas) return state;
+      
+      const updatedCanvases = state.project.canvases.map(c =>
+        c.id === canvas.id
+          ? { ...c, elements: c.elements.map(el => el.id === id ? { ...el, zIndex: el.zIndex + 1 } : el) as CanvasElement[] }
+          : c
+      );
       const updated = {
         ...state.project,
-        elements: state.project.elements.map((e) =>
-          e.id === id ? { ...e, zIndex: e.zIndex + 1 } : e
-        ) as CanvasElement[],
+        canvases: updatedCanvases,
         updatedAt: new Date().toISOString(),
       };
       saveProject(updated);
@@ -448,14 +593,17 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   moveDown: (id) => {
     set((state) => {
-      if (!state.project) return state;
-      const el = state.project.elements.find((e) => e.id === id);
-      if (!el) return state;
+      const canvas = get().getActiveCanvas();
+      if (!state.project || !canvas) return state;
+      
+      const updatedCanvases = state.project.canvases.map(c =>
+        c.id === canvas.id
+          ? { ...c, elements: c.elements.map(el => el.id === id ? { ...el, zIndex: Math.max(0, el.zIndex - 1) } : el) as CanvasElement[] }
+          : c
+      );
       const updated = {
         ...state.project,
-        elements: state.project.elements.map((e) =>
-          e.id === id ? { ...e, zIndex: Math.max(0, e.zIndex - 1) } : e
-        ) as CanvasElement[],
+        canvases: updatedCanvases,
         updatedAt: new Date().toISOString(),
       };
       saveProject(updated);
@@ -474,7 +622,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const historyEntry = state.history[newIndex];
       const updated = {
         ...state.project,
-        elements: JSON.parse(JSON.stringify(historyEntry.elements)),
+        canvases: JSON.parse(JSON.stringify(historyEntry.canvases)),
         updatedAt: new Date().toISOString(),
       };
       saveProject(updated);
@@ -489,7 +637,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const historyEntry = state.history[newIndex];
       const updated = {
         ...state.project,
-        elements: JSON.parse(JSON.stringify(historyEntry.elements)),
+        canvases: JSON.parse(JSON.stringify(historyEntry.canvases)),
         updatedAt: new Date().toISOString(),
       };
       saveProject(updated);
@@ -510,7 +658,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   commitToHistory: () => {
     set((state) => {
       if (!state.project) return state;
-      return pushHistory(state, state.project.elements);
+      return pushHistory(state, state.project.canvases);
     });
   },
 
@@ -523,7 +671,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     try {
       const project = JSON.parse(json) as EditorProject;
       saveProject(project);
-      set({ project, selectedIds: [] });
+      set({ 
+        project, 
+        activeCanvasId: project.canvases?.[0]?.id || null,
+        selectedIds: [],
+        history: [{ canvases: project.canvases || [], timestamp: Date.now() }],
+        historyIndex: 0,
+      });
     } catch (e) {
       console.error('Invalid JSON');
     }

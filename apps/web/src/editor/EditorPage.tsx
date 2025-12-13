@@ -4,6 +4,7 @@ import { useEditorStore } from './store';
 import { EditorToolbar } from './components/EditorToolbar';
 import { EditorCanvas } from './components/EditorCanvas';
 import { PropertiesPanel } from './components/PropertiesPanel';
+import { PagesSidebar } from './components/PagesSidebar';
 
 export const EditorPage = () => {
   const { id } = useParams<{ id: string }>();
@@ -32,6 +33,7 @@ export const EditorPage = () => {
       <EditorToolbar />
       
       <div className="flex-1 flex overflow-hidden">
+        <PagesSidebar />
         <EditorCanvas />
         <PropertiesPanel />
       </div>

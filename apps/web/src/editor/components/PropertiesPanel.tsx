@@ -19,63 +19,68 @@ export const PropertiesPanel = () => {
     duplicateSelected,
     bringToFront,
     sendToBack,
-    setBackgroundColor,
+    getActiveCanvas,
+    updateCanvas,
+    activeCanvasId,
   } = useEditorStore();
 
-  const selectedElements = project?.elements.filter((el) => selectedIds.includes(el.id)) || [];
+  const activeCanvas = getActiveCanvas();
+  const selectedElements = activeCanvas?.elements.filter((el) => selectedIds.includes(el.id)) || [];
 
   // No selection - show canvas settings
   if (selectedElements.length === 0) {
     return (
       <div className="w-80 bg-[#1a1a1a] border-l border-[#333] overflow-y-auto">
         <div className="p-4 space-y-5">
-          <h3 className="text-white font-semibold">Canvas Settings</h3>
+          <h3 className="text-white font-semibold">
+            {activeCanvas ? `Page ${(project?.canvases.findIndex(c => c.id === activeCanvas.id) ?? 0) + 1}` : 'Canvas Settings'}
+          </h3>
 
-          <div className="space-y-2">
-            <label className="text-[#888] text-sm">Background Color</label>
-            <div className="flex gap-2">
-              <input
-                type="color"
-                value={project?.backgroundColor || '#1a1a1a'}
-                onChange={(e) => setBackgroundColor(e.target.value)}
-                className="w-12 h-8 rounded border border-[#333] cursor-pointer"
-              />
-              <input
-                type="text"
-                value={project?.backgroundColor || '#1a1a1a'}
-                onChange={(e) => setBackgroundColor(e.target.value)}
-                className="flex-1 bg-[#252525] text-white text-sm px-3 py-1 rounded border border-[#333] focus:border-[#3b82f6] outline-none font-mono"
-              />
-            </div>
-          </div>
+          {activeCanvas && activeCanvasId && (
+            <>
+              <div className="space-y-2">
+                <label className="text-[#888] text-sm">Background Color</label>
+                <div className="flex gap-2">
+                  <input
+                    type="color"
+                    value={activeCanvas.backgroundColor}
+                    onChange={(e) => updateCanvas(activeCanvasId, { backgroundColor: e.target.value })}
+                    className="w-12 h-8 rounded border border-[#333] cursor-pointer"
+                  />
+                  <input
+                    type="text"
+                    value={activeCanvas.backgroundColor}
+                    onChange={(e) => updateCanvas(activeCanvasId, { backgroundColor: e.target.value })}
+                    className="flex-1 bg-[#252525] text-white text-sm px-3 py-1 rounded border border-[#333] focus:border-[#3b82f6] outline-none font-mono"
+                  />
+                </div>
+              </div>
 
-          <div className="space-y-2">
-            <label className="text-[#888] text-sm">Canvas Size</label>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-[#555] text-xs">Width</label>
-                <input
-                  type="number"
-                  value={project?.canvasWidth || 2400}
-                  onChange={(e) =>
-                    useEditorStore.getState().setCanvasSize(Number(e.target.value), project?.canvasHeight || 3200)
-                  }
-                  className="w-full bg-[#252525] text-white text-sm px-2 py-1 rounded border border-[#333] focus:border-[#3b82f6] outline-none"
-                />
+              <div className="space-y-2">
+                <label className="text-[#888] text-sm">Page Size</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[#555] text-xs">Width</label>
+                    <input
+                      type="number"
+                      value={activeCanvas.width}
+                      onChange={(e) => updateCanvas(activeCanvasId, { width: Number(e.target.value) })}
+                      className="w-full bg-[#252525] text-white text-sm px-2 py-1 rounded border border-[#333] focus:border-[#3b82f6] outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[#555] text-xs">Height</label>
+                    <input
+                      type="number"
+                      value={activeCanvas.height}
+                      onChange={(e) => updateCanvas(activeCanvasId, { height: Number(e.target.value) })}
+                      className="w-full bg-[#252525] text-white text-sm px-2 py-1 rounded border border-[#333] focus:border-[#3b82f6] outline-none"
+                    />
+                  </div>
+                </div>
               </div>
-              <div>
-                <label className="text-[#555] text-xs">Height</label>
-                <input
-                  type="number"
-                  value={project?.canvasHeight || 3200}
-                  onChange={(e) =>
-                    useEditorStore.getState().setCanvasSize(project?.canvasWidth || 2400, Number(e.target.value))
-                  }
-                  className="w-full bg-[#252525] text-white text-sm px-2 py-1 rounded border border-[#333] focus:border-[#3b82f6] outline-none"
-                />
-              </div>
-            </div>
-          </div>
+            </>
+          )}
 
           <div className="border-t border-[#333] pt-4">
             <p className="text-[#555] text-sm">
@@ -84,13 +89,13 @@ export const PropertiesPanel = () => {
           </div>
 
           {/* Elements list */}
-          {project && project.elements.length > 0 && (
+          {activeCanvas && activeCanvas.elements.length > 0 && (
             <div className="space-y-2">
               <label className="text-[#888] text-sm flex items-center gap-2">
-                <Layers size={14} /> Elements ({project.elements.length})
+                <Layers size={14} /> Elements ({activeCanvas.elements.length})
               </label>
               <div className="space-y-1 max-h-64 overflow-y-auto">
-                {[...project.elements]
+                {[...activeCanvas.elements]
                   .sort((a, b) => b.zIndex - a.zIndex)
                   .map((el) => (
                     <button

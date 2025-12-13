@@ -57,12 +57,16 @@ export const EditorCanvas = () => {
     panOffset,
     setPanOffset,
     commitToHistory,
+    getActiveCanvas,
+    activeCanvasId,
+    setActiveCanvas,
   } = useEditorStore();
 
-  // Assign canvas ref for both canvasRef and canvasTransformRef
+  const activeCanvas = getActiveCanvas();
+
+  // Assign canvas ref for active canvas
   const setCanvasRef = useCallback((el: HTMLDivElement | null) => {
     (canvasRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
-    (canvasTransformRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
   }, []);
 
   // Handle wheel/gesture events for pan and zoom
@@ -73,7 +77,6 @@ export const EditorCanvas = () => {
     let isGesturing = false;
     
     const handleWheel = (e: WheelEvent) => {
-      // Skip wheel events during gesture (Safari sends both)
       if (isGesturing) {
         e.preventDefault();
         return;
@@ -81,77 +84,73 @@ export const EditorCanvas = () => {
       
       e.preventDefault();
       
-      const canvas = canvasRef.current;
-      if (!canvas) return;
+      const transformEl = canvasTransformRef.current;
+      if (!transformEl) return;
 
       const { zoom, panOffset, setZoom, setPanOffset } = useEditorStore.getState();
 
-      // Cmd+scroll = zoom (works on all browsers)
+      // Cmd+scroll = zoom
       if (e.metaKey || e.ctrlKey) {
         const delta = -e.deltaY * 0.01;
         const newZoom = Math.max(0.1, Math.min(3, zoom + delta));
 
-        // Zoom toward cursor
-        const rect = canvas.getBoundingClientRect();
+        const rect = container.getBoundingClientRect();
         const mouseX = e.clientX - rect.left;
         const mouseY = e.clientY - rect.top;
+        
         const scaleChange = newZoom / zoom;
-        const newPanX = e.clientX - mouseX * scaleChange;
-        const newPanY = e.clientY - mouseY * scaleChange;
+        const newPanX = mouseX - (mouseX - panOffset.x) * scaleChange;
+        const newPanY = mouseY - (mouseY - panOffset.y) * scaleChange;
 
         setPanOffset({ x: newPanX, y: newPanY });
         setZoom(newZoom);
-        canvas.style.transform = `translate(${newPanX}px, ${newPanY}px) scale(${newZoom})`;
+        transformEl.style.transform = `translate(${newPanX}px, ${newPanY}px) scale(${newZoom})`;
       } else {
         // Regular scroll = pan
         const newPanX = panOffset.x - e.deltaX;
         const newPanY = panOffset.y - e.deltaY;
         
         setPanOffset({ x: newPanX, y: newPanY });
-        canvas.style.transform = `translate(${newPanX}px, ${newPanY}px) scale(${zoom})`;
+        transformEl.style.transform = `translate(${newPanX}px, ${newPanY}px) scale(${zoom})`;
       }
     };
 
     // Safari pinch gesture events
     let startZoom = 1;
+    let startPan = { x: 0, y: 0 };
     
     const handleGestureStart = (e: any) => {
       e.preventDefault();
       e.stopPropagation();
       isGesturing = true;
-      startZoom = useEditorStore.getState().zoom;
+      const state = useEditorStore.getState();
+      startZoom = state.zoom;
+      startPan = { ...state.panOffset };
     };
     
     const handleGestureChange = (e: any) => {
       e.preventDefault();
       e.stopPropagation();
       
-      const canvas = canvasRef.current;
-      if (!canvas) return;
+      const transformEl = canvasTransformRef.current;
+      if (!transformEl) return;
 
-      const { zoom, panOffset, setZoom, setPanOffset } = useEditorStore.getState();
+      const { zoom, setZoom, setPanOffset } = useEditorStore.getState();
       
-      // Scale relative to start zoom
       const newZoom = Math.max(0.1, Math.min(3, startZoom * e.scale));
 
-      // Zoom toward center of container (gesture events don't have reliable clientX/Y)
-      const rect = containerRef.current!.getBoundingClientRect();
+      const rect = container.getBoundingClientRect();
       const centerX = rect.width / 2;
       const centerY = rect.height / 2;
       
-      const canvasRect = canvas.getBoundingClientRect();
-      const mouseX = centerX - (canvasRect.left - rect.left);
-      const mouseY = centerY - (canvasRect.top - rect.top);
-      
-      const scaleChange = newZoom / zoom;
-      const newPanX = centerX - mouseX * scaleChange;
-      const newPanY = centerY - mouseY * scaleChange;
+      const scaleChange = newZoom / startZoom;
+      const newPanX = centerX - (centerX - startPan.x) * scaleChange;
+      const newPanY = centerY - (centerY - startPan.y) * scaleChange;
 
       setPanOffset({ x: newPanX, y: newPanY });
       setZoom(newZoom);
-      canvas.style.transform = `translate(${newPanX}px, ${newPanY}px) scale(${newZoom})`;
-      
-      };
+      transformEl.style.transform = `translate(${newPanX}px, ${newPanY}px) scale(${newZoom})`;
+    };
     
     const handleGestureEnd = (e: any) => {
       e.preventDefault();
@@ -298,11 +297,11 @@ export const EditorCanvas = () => {
     } else {
       // For move, store positions of all selected elements
       let startPositions: Map<string, { x: number; y: number }> | undefined;
-      if (type === 'move' && project) {
+      if (type === 'move' && activeCanvas) {
         startPositions = new Map();
         const idsToMove = selectedIds.includes(element.id) ? selectedIds : [element.id];
         idsToMove.forEach((id) => {
-          const el = project.elements.find((e) => e.id === id);
+          const el = activeCanvas.elements.find((e) => e.id === id);
           if (el) {
             startPositions!.set(id, { x: el.x, y: el.y });
           }
@@ -333,11 +332,19 @@ export const EditorCanvas = () => {
       setIsPanning(true);
       panStartRef.current = { x: e.clientX - panOffset.x, y: e.clientY - panOffset.y };
     } else if (tool === 'select' && canvasRef.current) {
-      // Default drag = selection box
+      // Check if click is within the canvas bounds
       const rect = canvasRef.current.getBoundingClientRect();
-      const x = (e.clientX - rect.left) / zoom;
-      const y = (e.clientY - rect.top) / zoom;
-      setSelectionBox({ startX: x, startY: y, endX: x, endY: y });
+      if (e.clientX >= rect.left && e.clientX <= rect.right &&
+          e.clientY >= rect.top && e.clientY <= rect.bottom) {
+        // Default drag = selection box
+        const x = (e.clientX - rect.left) / zoom;
+        const y = (e.clientY - rect.top) / zoom;
+        setSelectionBox({ startX: x, startY: y, endX: x, endY: y });
+      } else {
+        // Click outside canvas - start panning instead
+        setIsPanning(true);
+        panStartRef.current = { x: e.clientX - panOffset.x, y: e.clientY - panOffset.y };
+      }
     }
   };
 
@@ -383,15 +390,15 @@ export const EditorCanvas = () => {
       const dx = (e.clientX - drag.startX) / zoom;
       const dy = (e.clientY - drag.startY) / zoom;
 
-      if (drag.type === 'move' && project) {
+      if (drag.type === 'move' && activeCanvas) {
         // Move all elements that were selected when drag started
         // Clamp to canvas bounds
         const clamp = (id: string, newX: number, newY: number) => {
-          const el = project.elements.find((e) => e.id === id);
+          const el = activeCanvas.elements.find((e) => e.id === id);
           if (!el) return { x: newX, y: newY };
           return {
-            x: Math.max(0, Math.min(project.canvasWidth - el.width, newX)),
-            y: Math.max(0, Math.min(project.canvasHeight - el.height, newY)),
+            x: Math.max(0, Math.min(activeCanvas.width - el.width, newX)),
+            y: Math.max(0, Math.min(activeCanvas.height - el.height, newY)),
           };
         };
         
@@ -404,7 +411,7 @@ export const EditorCanvas = () => {
           const clamped = clamp(drag.elementId, drag.startElX + dx, drag.startElY + dy);
           updateElement(drag.elementId, clamped);
         }
-      } else if (drag.type === 'resize' && project) {
+      } else if (drag.type === 'resize' && activeCanvas) {
         let newW = drag.startElW;
         let newH = drag.startElH;
         let newX = drag.startElX;
@@ -431,8 +438,8 @@ export const EditorCanvas = () => {
         // Clamp to canvas bounds
         newX = Math.max(0, newX);
         newY = Math.max(0, newY);
-        newW = Math.min(newW, project.canvasWidth - newX);
-        newH = Math.min(newH, project.canvasHeight - newY);
+        newW = Math.min(newW, activeCanvas.width - newX);
+        newH = Math.min(newH, activeCanvas.height - newY);
 
         updateElement(drag.elementId, { x: newX, y: newY, width: newW, height: newH });
       } else if (drag.type === 'rotate' && drag.centerX !== undefined && drag.centerY !== undefined) {
@@ -457,7 +464,7 @@ export const EditorCanvas = () => {
 
   const handleMouseUp = (e: React.MouseEvent) => {
     // Finalize selection box
-    if (selectionBox && project) {
+    if (selectionBox && activeCanvas) {
       const minX = Math.min(selectionBox.startX, selectionBox.endX);
       const maxX = Math.max(selectionBox.startX, selectionBox.endX);
       const minY = Math.min(selectionBox.startY, selectionBox.endY);
@@ -465,7 +472,7 @@ export const EditorCanvas = () => {
       
       // Only select if box is big enough (not just a click)
       if (maxX - minX > 5 || maxY - minY > 5) {
-        const selectedElements = project.elements.filter((el) => {
+        const selectedElements = activeCanvas.elements.filter((el) => {
           const elRight = el.x + el.width;
           const elBottom = el.y + el.height;
           return el.x < maxX && elRight > minX && el.y < maxY && elBottom > minY;
@@ -655,12 +662,44 @@ export const EditorCanvas = () => {
     );
   };
 
-  if (!project) return null;
+  if (!project || !activeCanvas) return null;
 
   const sortedElements = useMemo(
-    () => [...project.elements].sort((a, b) => a.zIndex - b.zIndex),
-    [project.elements]
+    () => [...activeCanvas.elements].sort((a, b) => a.zIndex - b.zIndex),
+    [activeCanvas.elements]
   );
+
+  const sortedCanvases = [...project.canvases].sort((a, b) => a.order - b.order);
+  
+  // Calculate canvas positions based on layout
+  const GAP = 40;
+  const canvasPositions = useMemo(() => {
+    const positions: Map<string, { x: number; y: number }> = new Map();
+    let x = 0;
+    let y = 0;
+    const cols = project.layout === 'grid' ? Math.ceil(Math.sqrt(sortedCanvases.length)) : 1;
+    
+    sortedCanvases.forEach((canvas, index) => {
+      if (project.layout === 'horizontal') {
+        positions.set(canvas.id, { x, y: 0 });
+        x += canvas.width + GAP;
+      } else if (project.layout === 'vertical') {
+        positions.set(canvas.id, { x: 0, y });
+        y += canvas.height + GAP;
+      } else {
+        // Grid
+        const col = index % cols;
+        const row = Math.floor(index / cols);
+        positions.set(canvas.id, { 
+          x: col * (canvas.width + GAP), 
+          y: row * (canvas.height + GAP) 
+        });
+      }
+    });
+    return positions;
+  }, [sortedCanvases, project.layout]);
+
+  const activeCanvasPos = canvasPositions.get(activeCanvasId!) || { x: 0, y: 0 };
 
   return (
     <div
@@ -678,7 +717,7 @@ export const EditorCanvas = () => {
           : tool.startsWith('add-')
           ? 'crosshair'
           : 'default',
-        touchAction: 'none', // Prevent browser zoom/pan
+        touchAction: 'none',
       }}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
@@ -689,55 +728,174 @@ export const EditorCanvas = () => {
       }}
       onMouseDown={handleCanvasMouseDown}
     >
-      {/* Canvas */}
+      {/* All Canvases Container */}
       <div
-        ref={setCanvasRef}
-        className="absolute shadow-2xl will-change-transform overflow-hidden"
+        ref={(el) => { (canvasTransformRef as React.MutableRefObject<HTMLDivElement | null>).current = el; }}
+        className="absolute will-change-transform"
         style={{
-          width: project.canvasWidth,
-          height: project.canvasHeight,
-          backgroundColor: project.backgroundColor,
           transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})`,
           transformOrigin: '0 0',
         }}
-        onClick={handleCanvasClick}
       >
-        {/* Grid */}
-        <div
-          className="absolute inset-0 opacity-10 pointer-events-none"
-          style={{
-            backgroundImage: `
-              linear-gradient(to right, #555 1px, transparent 1px),
-              linear-gradient(to bottom, #555 1px, transparent 1px)
-            `,
-            backgroundSize: '50px 50px',
-          }}
-        />
+        {/* Render all canvases */}
+        {sortedCanvases.map((canvas, index) => {
+          const pos = canvasPositions.get(canvas.id) || { x: 0, y: 0 };
+          const isActive = canvas.id === activeCanvasId;
+          const canvasSortedElements = [...canvas.elements].sort((a, b) => a.zIndex - b.zIndex);
 
-        {/* Non-selected elements (clipped by overflow:hidden) */}
-        {sortedElements.filter(el => !selectedIds.includes(el.id)).map(renderElement)}
+          return (
+            <div
+              key={canvas.id}
+              className="absolute"
+              style={{
+                left: pos.x,
+                top: pos.y,
+                width: canvas.width,
+                height: canvas.height,
+              }}
+              onClick={(e) => {
+                if (!isActive) {
+                  e.stopPropagation();
+                  setActiveCanvas(canvas.id);
+                }
+              }}
+            >
+              {/* Canvas content */}
+              <div
+                ref={isActive ? setCanvasRef : undefined}
+                className={`absolute inset-0 overflow-hidden ${
+                  isActive ? 'ring-2 ring-[#3b82f6]' : ''
+                }`}
+                style={{
+                  backgroundColor: canvas.backgroundColor,
+                  boxShadow: isActive 
+                    ? '0 25px 50px -12px rgba(59, 130, 246, 0.25)' 
+                    : '0 20px 25px -5px rgba(0, 0, 0, 0.3)',
+                }}
+                onClick={isActive ? handleCanvasClick : undefined}
+              >
+                {/* Grid (only on active) */}
+                {isActive && (
+                  <div
+                    className="absolute inset-0 opacity-10 pointer-events-none"
+                    style={{
+                      backgroundImage: `
+                        linear-gradient(to right, #555 1px, transparent 1px),
+                        linear-gradient(to bottom, #555 1px, transparent 1px)
+                      `,
+                      backgroundSize: '50px 50px',
+                    }}
+                  />
+                )}
 
-        {/* Selection box */}
-        {selectionBox && (
-          <div
-            className="absolute border-2 border-[#3b82f6] bg-[#3b82f6]/10 pointer-events-none z-[9999]"
-            style={{
-              left: Math.min(selectionBox.startX, selectionBox.endX),
-              top: Math.min(selectionBox.startY, selectionBox.endY),
-              width: Math.abs(selectionBox.endX - selectionBox.startX),
-              height: Math.abs(selectionBox.endY - selectionBox.startY),
-            }}
-          />
-        )}
+                {/* Elements */}
+                {isActive ? (
+                  // Active canvas - render with full interaction
+                  <>
+                    {canvasSortedElements.filter(el => !selectedIds.includes(el.id)).map(renderElement)}
+                    {canvasSortedElements.length === 0 && (
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <div className="text-[#999] text-center space-y-2">
+                          <p className="text-lg font-medium">Empty page</p>
+                          <p className="text-sm">
+                            <kbd className="px-2 py-1 bg-[#eee] text-[#666] rounded text-xs">I</kbd> Image &nbsp;
+                            <kbd className="px-2 py-1 bg-[#eee] text-[#666] rounded text-xs">N</kbd> Narrative &nbsp;
+                            <kbd className="px-2 py-1 bg-[#eee] text-[#666] rounded text-xs">D</kbd> Dialogue
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  // Inactive canvas - render preview only
+                  canvasSortedElements.map((el) => (
+                    <div
+                      key={el.id}
+                      className="absolute opacity-70 pointer-events-none"
+                      style={{
+                        left: el.x,
+                        top: el.y,
+                        width: el.width,
+                        height: el.height,
+                        transform: `rotate(${el.rotation}deg)`,
+                      }}
+                    >
+                      {el.type === 'image' && (
+                        <div
+                          className="w-full h-full bg-[#333] flex items-center justify-center"
+                          style={{
+                            border: `${(el as ImageElement).borderWidth}px solid ${(el as ImageElement).borderColor}`,
+                          }}
+                        >
+                          {(el as ImageElement).imageUrl ? (
+                            <img src={(el as ImageElement).imageUrl} className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-[#555] text-xs">IMG</span>
+                          )}
+                        </div>
+                      )}
+                      {el.type === 'narrative' && (
+                        <div
+                          className="w-full h-full flex items-center justify-center text-xs p-2"
+                          style={{
+                            backgroundColor: (el as NarrativeElement).bgColor,
+                            color: (el as NarrativeElement).textColor,
+                            border: `${(el as NarrativeElement).borderWidth}px solid ${(el as NarrativeElement).borderColor}`,
+                          }}
+                        >
+                          {(el as NarrativeElement).text}
+                        </div>
+                      )}
+                      {el.type === 'dialogue' && (
+                        <div
+                          className="w-full h-full flex items-center justify-center text-xs p-2 rounded-2xl"
+                          style={{
+                            backgroundColor: (el as DialogueElement).bgColor,
+                            color: (el as DialogueElement).textColor,
+                            border: `${(el as DialogueElement).borderWidth}px solid ${(el as DialogueElement).borderColor}`,
+                          }}
+                        >
+                          {(el as DialogueElement).text}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+
+                {/* Selection box (only on active) */}
+                {isActive && selectionBox && (
+                  <div
+                    className="absolute border-2 border-[#3b82f6] bg-[#3b82f6]/10 pointer-events-none z-[9999]"
+                    style={{
+                      left: Math.min(selectionBox.startX, selectionBox.endX),
+                      top: Math.min(selectionBox.startY, selectionBox.endY),
+                      width: Math.abs(selectionBox.endX - selectionBox.startX),
+                      height: Math.abs(selectionBox.endY - selectionBox.startY),
+                    }}
+                  />
+                )}
+              </div>
+
+              {/* Page label */}
+              <div
+                className={`absolute -bottom-6 left-0 text-xs ${
+                  isActive ? 'text-[#3b82f6]' : 'text-[#555]'
+                }`}
+              >
+                Page {index + 1}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      {/* Selected elements overlay (not clipped, rendered on top) */}
+      {/* Selected elements overlay for active canvas (not clipped) */}
       <div
         className="absolute pointer-events-none"
         style={{
-          width: project.canvasWidth,
-          height: project.canvasHeight,
-          transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})`,
+          width: activeCanvas.width,
+          height: activeCanvas.height,
+          transform: `translate(${panOffset.x + activeCanvasPos.x * zoom}px, ${panOffset.y + activeCanvasPos.y * zoom}px) scale(${zoom})`,
           transformOrigin: '0 0',
         }}
       >
@@ -746,20 +904,6 @@ export const EditorCanvas = () => {
         </div>
       </div>
 
-      {/* Instructions */}
-      {project.elements.length === 0 && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="text-[#555] text-center space-y-2">
-            <p className="text-lg">Canvas is empty</p>
-            <p className="text-sm">
-              <kbd className="px-2 py-1 bg-[#333] rounded">I</kbd> Image &nbsp;
-              <kbd className="px-2 py-1 bg-[#333] rounded">N</kbd> Narrative &nbsp;
-              <kbd className="px-2 py-1 bg-[#333] rounded">D</kbd> Dialogue
-            </p>
-            <p className="text-sm text-[#444]">Then click on canvas to place</p>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
