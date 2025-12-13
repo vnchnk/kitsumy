@@ -45,6 +45,7 @@ interface EditorState {
   duplicateCanvas: (id: string) => void;
 
   // Element actions (operate on active canvas)
+  addElements: (elements: CanvasElement[]) => void;
   addElement: (type: ElementType, x: number, y: number) => void;
   updateElement: (id: string, updates: Partial<CanvasElement>) => void;
   deleteElement: (id: string) => void;
@@ -377,6 +378,24 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   // Element actions - operate on active canvas
+  addElements: (elements) => {
+    set((state) => {
+      const canvas = get().getActiveCanvas();
+      if (!state.project || !canvas) return state;
+      
+      const updatedCanvases = state.project.canvases.map(c =>
+        c.id === canvas.id ? { ...c, elements: [...c.elements, ...elements] } : c
+      );
+      const updated = {
+        ...state.project,
+        canvases: updatedCanvases,
+        updatedAt: new Date().toISOString(),
+      };
+      saveProject(updated);
+      return { project: updated, ...pushHistory(state, updatedCanvases) };
+    });
+  },
+
   addElement: (type, x, y) => {
     set((state) => {
       const canvas = get().getActiveCanvas();

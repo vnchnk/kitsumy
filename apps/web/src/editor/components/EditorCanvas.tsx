@@ -664,11 +664,6 @@ export const EditorCanvas = () => {
 
   if (!project || !activeCanvas) return null;
 
-  const sortedElements = useMemo(
-    () => [...activeCanvas.elements].sort((a, b) => a.zIndex - b.zIndex),
-    [activeCanvas.elements]
-  );
-
   const sortedCanvases = [...project.canvases].sort((a, b) => a.order - b.order);
   
   // Calculate canvas positions based on layout
@@ -698,8 +693,6 @@ export const EditorCanvas = () => {
     });
     return positions;
   }, [sortedCanvases, project.layout]);
-
-  const activeCanvasPos = canvasPositions.get(activeCanvasId!) || { x: 0, y: 0 };
 
   return (
     <div
@@ -792,7 +785,7 @@ export const EditorCanvas = () => {
                 {isActive ? (
                   // Active canvas - render with full interaction
                   <>
-                    {canvasSortedElements.filter(el => !selectedIds.includes(el.id)).map(renderElement)}
+                    {canvasSortedElements.map(renderElement)}
                     {canvasSortedElements.length === 0 && (
                       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                         <div className="text-[#999] text-center space-y-2">
@@ -889,20 +882,6 @@ export const EditorCanvas = () => {
         })}
       </div>
 
-      {/* Selected elements overlay for active canvas (not clipped) */}
-      <div
-        className="absolute pointer-events-none"
-        style={{
-          width: activeCanvas.width,
-          height: activeCanvas.height,
-          transform: `translate(${panOffset.x + activeCanvasPos.x * zoom}px, ${panOffset.y + activeCanvasPos.y * zoom}px) scale(${zoom})`,
-          transformOrigin: '0 0',
-        }}
-      >
-        <div className="pointer-events-auto">
-          {sortedElements.filter(el => selectedIds.includes(el.id)).map(renderElement)}
-        </div>
-      </div>
 
     </div>
   );

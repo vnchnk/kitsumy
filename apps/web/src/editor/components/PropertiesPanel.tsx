@@ -9,6 +9,7 @@ import {
   Trash2,
   Copy,
 } from 'lucide-react';
+import { TemplatesPanel } from './TemplatesPanel';
 
 export const PropertiesPanel = () => {
   const {
@@ -83,9 +84,7 @@ export const PropertiesPanel = () => {
           )}
 
           <div className="border-t border-[#333] pt-4">
-            <p className="text-[#555] text-sm">
-              Select an element on canvas to edit its properties
-            </p>
+            <TemplatesPanel />
           </div>
 
           {/* Elements list */}
