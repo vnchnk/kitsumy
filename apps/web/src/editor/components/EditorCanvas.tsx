@@ -1,13 +1,115 @@
 import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { useEditorStore } from '../store';
-import { CanvasElement, ImageElement, NarrativeElement, DialogueElement } from '../types';
+import { CanvasElement, ImageElement, NarrativeElement, DialogueElement, CLIP_PRESETS, BorderStyle } from '../types';
 
-const CLIP_VARIANTS = [
-  'none',
-  'polygon(0% 1%, 99% 0%, 100% 99%, 1% 100%)',
-  'polygon(1% 0%, 100% 1%, 99% 100%, 0% 99%)',
-  'polygon(2% 2%, 98% 0%, 100% 98%, 0% 100%)',
-];
+// Convert points array to CSS polygon string
+const pointsToClipPath = (points: number[][] | null): string => {
+  if (!points || points.length < 3) return 'none';
+  const polygonPoints = points.map(([x, y]) => `${x}% ${y}%`).join(', ');
+  return `polygon(${polygonPoints})`;
+};
+
+// Get clip path for an image element
+const getClipPath = (el: ImageElement): string => {
+  if (el.customClipPath && el.customClipPath.length >= 3) {
+    return pointsToClipPath(el.customClipPath);
+  }
+  const preset = CLIP_PRESETS[el.clipPreset] || CLIP_PRESETS['none'];
+  return pointsToClipPath(preset.points as unknown as number[][]);
+};
+
+// Get border style CSS
+const getBorderStyles = (style: BorderStyle, width: number, color: string): React.CSSProperties => {
+  const base: React.CSSProperties = {
+    borderWidth: width,
+    borderColor: color,
+    borderStyle: 'solid',
+  };
+  
+  switch (style) {
+    case 'none':
+      return { border: 'none' };
+    case 'clean':
+      return base;
+    case 'rough':
+      return {
+        ...base,
+        boxShadow: `
+          inset 1px 0 0 ${color},
+          inset -1px 0 0 ${color},
+          inset 0 1px 0 ${color},
+          inset 0 -1px 0 ${color},
+          1px 1px 0 ${color},
+          -1px -1px 0 ${color}
+        `,
+        filter: 'url(#rough-edge)',
+      };
+    case 'sketchy':
+      return {
+        ...base,
+        boxShadow: `
+          2px 2px 0 ${color},
+          -1px -1px 0 ${color},
+          1px -1px 0 ${color},
+          -1px 1px 0 ${color}
+        `,
+        borderStyle: 'solid',
+      };
+    case 'double':
+      return {
+        border: `${width}px double ${color}`,
+        outline: `${Math.max(1, width - 1)}px solid ${color}`,
+        outlineOffset: `${width}px`,
+      };
+    case 'worn':
+      return {
+        ...base,
+        boxShadow: `
+          inset 0 0 ${width * 2}px rgba(0,0,0,0.3),
+          0 0 ${width}px rgba(0,0,0,0.2)
+        `,
+        filter: 'url(#worn-edge)',
+      };
+    case 'ink':
+      return {
+        ...base,
+        boxShadow: `
+          0 0 ${width}px ${color},
+          0 0 ${width * 2}px ${color}
+        `,
+        filter: 'url(#ink-bleed)',
+      };
+    default:
+      return base;
+  }
+};
+
+// SVG Filters for border effects
+const BorderFilters = () => (
+  <svg style={{ position: 'absolute', width: 0, height: 0 }}>
+    <defs>
+      {/* Rough edge filter */}
+      <filter id="rough-edge" x="-5%" y="-5%" width="110%" height="110%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="2" result="noise" />
+        <feDisplacementMap in="SourceGraphic" in2="noise" scale="2" xChannelSelector="R" yChannelSelector="G" />
+      </filter>
+      
+      {/* Worn/aged edge filter */}
+      <filter id="worn-edge" x="-5%" y="-5%" width="110%" height="110%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="3" result="noise" />
+        <feDisplacementMap in="SourceGraphic" in2="noise" scale="3" xChannelSelector="R" yChannelSelector="G" />
+        <feGaussianBlur stdDeviation="0.3" />
+      </filter>
+      
+      {/* Ink bleed filter */}
+      <filter id="ink-bleed" x="-10%" y="-10%" width="120%" height="120%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves="2" result="noise" />
+        <feDisplacementMap in="SourceGraphic" in2="noise" scale="4" xChannelSelector="R" yChannelSelector="G" />
+        <feMorphology operator="dilate" radius="0.5" />
+      </filter>
+    </defs>
+  </svg>
+);
 
 const FONT_FAMILIES = {
   comic: "'Comic Neue', cursive",
@@ -68,6 +170,41 @@ export const EditorCanvas = () => {
   const setCanvasRef = useCallback((el: HTMLDivElement | null) => {
     (canvasRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
   }, []);
+
+  // Center canvas and fit to viewport on initial load
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !project || !activeCanvas) return;
+
+    // Small delay to ensure container has correct dimensions
+    const timeoutId = setTimeout(() => {
+      const containerRect = container.getBoundingClientRect();
+      const padding = 60; // Padding around canvas
+      
+      // Calculate zoom to fit canvas in viewport
+      const scaleX = (containerRect.width - padding * 2) / activeCanvas.width;
+      const scaleY = (containerRect.height - padding * 2) / activeCanvas.height;
+      const fitZoom = Math.min(scaleX, scaleY, 1); // Don't zoom in more than 100%
+      
+      // Center the canvas
+      const scaledWidth = activeCanvas.width * fitZoom;
+      const scaledHeight = activeCanvas.height * fitZoom;
+      const centerX = (containerRect.width - scaledWidth) / 2;
+      const centerY = (containerRect.height - scaledHeight) / 2;
+      
+      const { setZoom, setPanOffset } = useEditorStore.getState();
+      setZoom(fitZoom);
+      setPanOffset({ x: centerX, y: centerY });
+      
+      // Update transform immediately
+      const transformEl = canvasTransformRef.current;
+      if (transformEl) {
+        transformEl.style.transform = `translate(${centerX}px, ${centerY}px) scale(${fitZoom})`;
+      }
+    }, 50);
+
+    return () => clearTimeout(timeoutId);
+  }, [project?.id]); // Only run when project changes (initial load)
 
   // Handle wheel/gesture events for pan and zoom
   useEffect(() => {
@@ -504,35 +641,84 @@ export const EditorCanvas = () => {
   };
 
 
-  const renderImageElement = (el: ImageElement, isSelected: boolean) => (
-    <div
-      className="absolute inset-0 overflow-hidden"
-      style={{
-        border: `${el.borderWidth}px solid ${el.borderColor}`,
-        clipPath: CLIP_VARIANTS[el.clipVariant],
-      }}
-    >
-      {el.imageUrl ? (
-        <img
-          src={el.imageUrl}
-          alt=""
-          className="w-full h-full object-cover"
-          style={{ filter: `sepia(${el.sepiaLevel}) contrast(1.15) brightness(0.95)` }}
-          draggable={false}
-        />
-      ) : (
-        <div className="w-full h-full bg-[#333] flex items-center justify-center text-[#666] text-sm">
-          No Image
+  const renderImageElement = (el: ImageElement, isSelected: boolean) => {
+    const clipPath = getClipPath(el);
+    const points = el.customClipPath || (CLIP_PRESETS[el.clipPreset]?.points as unknown as number[][]) || [[0,0],[100,0],[100,100],[0,100]];
+    const svgPoints = points.map(([x, y]) => `${x},${y}`).join(' ');
+    
+    return (
+      <div className="absolute inset-0 overflow-visible">
+        {/* Content with clip path */}
+        <div
+          className="absolute inset-0 overflow-hidden"
+          style={{ clipPath }}
+        >
+          {el.imageUrl ? (
+            <img
+              src={el.imageUrl}
+              alt=""
+              className="w-full h-full object-cover"
+              style={{ filter: `sepia(${el.sepiaLevel}) contrast(1.15) brightness(0.95)` }}
+              draggable={false}
+            />
+          ) : (
+            <div className="w-full h-full bg-[#333] flex items-center justify-center text-[#666] text-sm">
+              No Image
+            </div>
+          )}
+          {el.showOverlay && (
+            <>
+              <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/comic-dots.png')] opacity-10 pointer-events-none mix-blend-multiply" />
+              <div className="absolute inset-0 shadow-[inset_0_0_60px_rgba(0,0,0,0.4)] pointer-events-none" />
+            </>
+          )}
         </div>
-      )}
-      {el.showOverlay && (
-        <>
-          <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/comic-dots.png')] opacity-10 pointer-events-none mix-blend-multiply" />
-          <div className="absolute inset-0 shadow-[inset_0_0_60px_rgba(0,0,0,0.4)] pointer-events-none" />
-        </>
-      )}
-    </div>
-  );
+        
+        {/* Border following clip path shape - uses project-level borderStyle */}
+        {(() => {
+          const borderStyle = project?.borderStyle || el.borderStyle;
+          if (borderStyle === 'none' || el.borderWidth <= 0) return null;
+          return (
+            <svg 
+              className="absolute inset-0 w-full h-full pointer-events-none"
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+              style={borderStyle === 'rough' || borderStyle === 'worn' || borderStyle === 'ink' 
+                ? { filter: `url(#${borderStyle === 'rough' ? 'rough-edge' : borderStyle === 'worn' ? 'worn-edge' : 'ink-bleed'})` }
+                : undefined
+              }
+            >
+              <polygon
+                points={svgPoints}
+                fill="none"
+                stroke={el.borderColor}
+                strokeLinejoin="miter"
+                vectorEffect="non-scaling-stroke"
+                strokeWidth={el.borderWidth}
+                style={borderStyle === 'sketchy' ? {
+                  strokeDasharray: '4 2',
+                } : undefined}
+              />
+              {borderStyle === 'double' && (
+                <polygon
+                  points={svgPoints}
+                  fill="none"
+                  stroke={el.borderColor}
+                  strokeLinejoin="miter"
+                  vectorEffect="non-scaling-stroke"
+                  strokeWidth={el.borderWidth / 3}
+                  style={{
+                    transform: 'scale(0.97)',
+                    transformOrigin: 'center',
+                  }}
+                />
+              )}
+            </svg>
+          );
+        })()}
+      </div>
+    );
+  };
 
   const renderNarrativeElement = (el: NarrativeElement) => (
     <div
@@ -695,16 +881,20 @@ export const EditorCanvas = () => {
   }, [sortedCanvases, project.layout]);
 
   return (
-    <div
-      ref={containerRef}
-      className="flex-1 overflow-hidden bg-[#0a0a0a] relative select-none"
-      style={{
-        cursor: isPanning
-          ? 'grabbing'
-          : selectionBox
-          ? 'crosshair'
-          : tool === 'pan'
-          ? 'grab'
+    <>
+      {/* SVG Filters for border effects */}
+      <BorderFilters />
+      
+      <div
+        ref={containerRef}
+        className="flex-1 overflow-hidden bg-[#0a0a0a] relative select-none"
+        style={{
+          cursor: isPanning
+            ? 'grabbing'
+            : selectionBox
+            ? 'crosshair'
+            : tool === 'pan'
+            ? 'grab'
           : tool === 'select'
           ? 'default'
           : tool.startsWith('add-')
@@ -881,8 +1071,7 @@ export const EditorCanvas = () => {
           );
         })}
       </div>
-
-
     </div>
+    </>
   );
 };

@@ -1,5 +1,5 @@
 import { useEditorStore } from '../store';
-import { PAPER_SIZES, PaperSize, CanvasLayout } from '../types';
+import { PAPER_SIZES, PaperSize, CanvasLayout, BORDER_STYLES, BorderStyle } from '../types';
 import { Plus, Copy, Trash2, LayoutGrid, ArrowRight, ArrowDown } from 'lucide-react';
 
 export const PagesSidebar = () => {
@@ -12,6 +12,7 @@ export const PagesSidebar = () => {
     duplicateCanvas,
     setPaperSize,
     setLayout,
+    setBorderStyle,
   } = useEditorStore();
 
   if (!project) return null;
@@ -62,6 +63,20 @@ export const PagesSidebar = () => {
             ))}
           </div>
         </div>
+
+        {/* Border Style */}
+        <div className="space-y-2 mt-3">
+          <label className="text-[#666] text-xs">Border Style</label>
+          <select
+            value={project.borderStyle || 'clean'}
+            onChange={(e) => setBorderStyle(e.target.value as BorderStyle)}
+            className="w-full bg-[#252525] text-white text-xs px-2 py-1.5 rounded border border-[#333] focus:border-[#3b82f6] outline-none"
+          >
+            {Object.entries(BORDER_STYLES).map(([key, { name }]) => (
+              <option key={key} value={key}>{name}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Pages List */}
@@ -78,24 +93,22 @@ export const PagesSidebar = () => {
           >
             {/* Thumbnail */}
             <div
-              className="w-full aspect-[3/4] bg-[#252525] rounded border border-[#333] mb-2 overflow-hidden"
+              className="w-full aspect-[3/4] bg-[#252525] rounded border border-[#333] mb-2 overflow-hidden relative"
               style={{ backgroundColor: canvas.backgroundColor }}
             >
-              {/* Mini preview of elements */}
-              <div className="w-full h-full relative" style={{ transform: 'scale(0.1)', transformOrigin: 'top left' }}>
-                {canvas.elements.slice(0, 5).map((el) => (
-                  <div
-                    key={el.id}
-                    className="absolute bg-[#666]"
-                    style={{
-                      left: el.x * 0.1,
-                      top: el.y * 0.1,
-                      width: el.width * 0.1,
-                      height: el.height * 0.1,
-                    }}
-                  />
-                ))}
-              </div>
+              {/* Mini preview of elements - scale to fit thumbnail */}
+              {canvas.elements.slice(0, 10).map((el) => (
+                <div
+                  key={el.id}
+                  className="absolute bg-[#555] rounded-sm"
+                  style={{
+                    left: `${(el.x / canvas.width) * 100}%`,
+                    top: `${(el.y / canvas.height) * 100}%`,
+                    width: `${(el.width / canvas.width) * 100}%`,
+                    height: `${(el.height / canvas.height) * 100}%`,
+                  }}
+                />
+              ))}
             </div>
 
             {/* Name */}

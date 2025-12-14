@@ -1,5 +1,5 @@
 import { useEditorStore } from '../store';
-import { ImageElement, NarrativeElement, DialogueElement, CanvasElement } from '../types';
+import { ImageElement, NarrativeElement, DialogueElement, CanvasElement, CLIP_PRESETS, ClipPreset } from '../types';
 import {
   Image,
   RotateCcw,
@@ -10,6 +10,7 @@ import {
   Copy,
 } from 'lucide-react';
 import { TemplatesPanel } from './TemplatesPanel';
+import { PolygonEditor } from './PolygonEditor';
 
 export const PropertiesPanel = () => {
   const {
@@ -335,23 +336,42 @@ const ImageProperties = ({
     </div>
 
     <div className="space-y-2">
-      <span className="text-[#888] text-sm">Edge Clip</span>
-      <div className="flex gap-2">
-        {[0, 1, 2, 3].map((v) => (
-          <button
-            key={v}
-            onClick={() => update({ clipVariant: v })}
-            className={`flex-1 h-10 border-2 rounded transition-colors ${
-              element.clipVariant === v
-                ? 'border-[#3b82f6] bg-[#3b82f6]/20'
-                : 'border-[#333] hover:border-[#555]'
-            }`}
-          >
-            <span className="text-[#888] text-xs">{v === 0 ? 'None' : v}</span>
-          </button>
-        ))}
+      <span className="text-[#888] text-sm">Shape</span>
+      <div className="grid grid-cols-4 gap-1.5 max-h-48 overflow-y-auto pr-1">
+        {(Object.entries(CLIP_PRESETS) as [ClipPreset, typeof CLIP_PRESETS[ClipPreset]][]).map(([key, preset]) => {
+          const points = preset.points as unknown as number[][];
+          const svgPoints = points.map(([x, y]) => `${x * 0.4},${y * 0.4}`).join(' ');
+          return (
+            <button
+              key={key}
+              onClick={() => update({ clipPreset: key, customClipPath: null })}
+              title={preset.name}
+              className={`aspect-[3/4] p-1 rounded transition-colors ${
+                element.clipPreset === key && !element.customClipPath
+                  ? 'bg-[#3b82f6]/30 ring-1 ring-[#3b82f6]'
+                  : 'bg-[#252525] hover:bg-[#333]'
+              }`}
+            >
+              <svg viewBox="0 0 40 53" className="w-full h-full">
+                <polygon
+                  points={svgPoints}
+                  fill="#666"
+                  stroke="#888"
+                  strokeWidth="0.5"
+                />
+              </svg>
+            </button>
+          );
+        })}
       </div>
     </div>
+
+    {/* Polygon Editor - shows when editing custom shape */}
+    <PolygonEditor
+      points={element.customClipPath || (CLIP_PRESETS[element.clipPreset].points as unknown as number[][])}
+      onChange={(points) => update({ customClipPath: points })}
+      onReset={() => update({ customClipPath: null })}
+    />
 
     <div className="flex items-center justify-between">
       <span className="text-[#888] text-sm">Comic Overlay</span>

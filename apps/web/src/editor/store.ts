@@ -10,6 +10,7 @@ import {
   Canvas,
   PaperSize,
   CanvasLayout,
+  BorderStyle,
   PAPER_SIZES,
 } from './types';
 
@@ -35,6 +36,7 @@ interface EditorState {
   setProjectTitle: (title: string) => void;
   setPaperSize: (size: PaperSize) => void;
   setLayout: (layout: CanvasLayout) => void;
+  setBorderStyle: (style: BorderStyle) => void;
 
   // Canvas actions
   addCanvas: () => void;
@@ -96,8 +98,10 @@ const createDefaultImage = (x: number, y: number, zIndex: number): ImageElement 
   imageUrl: '',
   borderWidth: 4,
   borderColor: '#000000',
+  borderStyle: 'clean',
   sepiaLevel: 0.15,
-  clipVariant: 0,
+  clipPreset: 'none',
+  customClipPath: null,
   showOverlay: true,
 });
 
@@ -207,6 +211,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       canvases: [defaultCanvas],
       paperSize: 'A4',
       layout: 'horizontal',
+      borderStyle: 'clean',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -252,6 +257,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set((state) => {
       if (!state.project) return state;
       const updated = { ...state.project, layout, updatedAt: new Date().toISOString() };
+      saveProject(updated);
+      return { project: updated };
+    });
+  },
+
+  setBorderStyle: (borderStyle) => {
+    set((state) => {
+      if (!state.project) return state;
+      const updated = { ...state.project, borderStyle, updatedAt: new Date().toISOString() };
       saveProject(updated);
       return { project: updated };
     });
