@@ -65,6 +65,7 @@ interface EditorState {
   setTool: (tool: Tool) => void;
   setZoom: (zoom: number) => void;
   setPanOffset: (offset: { x: number; y: number }) => void;
+  focusOnCanvas: (canvasId: string, viewportWidth: number, viewportHeight: number) => void;
   
   // Undo/Redo
   undo: () => void;
@@ -647,6 +648,71 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setTool: (tool) => set({ tool }),
   setZoom: (zoom) => set({ zoom: Math.max(0.1, Math.min(3, zoom)) }),
   setPanOffset: (panOffset) => set({ panOffset }),
+  
+  focusOnCanvas: (canvasId, viewportWidth, viewportHeight) => {
+    const state = get();
+    if (!state.project) return;
+    
+    const GAP = 40;
+    const sortedCanvases = [...state.project.canvases].sort((a, b) => a.order - b.order);
+    const cols = state.project.layout === 'grid' ? Math.ceil(Math.sqrt(sortedCanvases.length)) : 1;
+    
+    // Find canvas and calculate its position
+    let targetX = 0, targetY = 0;
+    let targetCanvas: Canvas | null = null;
+    let x = 0, y = 0;
+    
+    for (let i = 0; i < sortedCanvases.length; i++) {
+      const canvas = sortedCanvases[i];
+      if (state.project.layout === 'horizontal') {
+        if (canvas.id === canvasId) {
+          targetX = x;
+          targetY = 0;
+          targetCanvas = canvas;
+          break;
+        }
+        x += canvas.width + GAP;
+      } else if (state.project.layout === 'vertical') {
+        if (canvas.id === canvasId) {
+          targetX = 0;
+          targetY = y;
+          targetCanvas = canvas;
+          break;
+        }
+        y += canvas.height + GAP;
+      } else {
+        // Grid
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        if (canvas.id === canvasId) {
+          targetX = col * (canvas.width + GAP);
+          targetY = row * (canvas.height + GAP);
+          targetCanvas = canvas;
+          break;
+        }
+      }
+    }
+    
+    if (!targetCanvas) return;
+    
+    // Calculate zoom to fit canvas with padding
+    const padding = 60;
+    const scaleX = (viewportWidth - padding * 2) / targetCanvas.width;
+    const scaleY = (viewportHeight - padding * 2) / targetCanvas.height;
+    const newZoom = Math.min(scaleX, scaleY, 1);
+    
+    // Center the canvas in viewport
+    const scaledWidth = targetCanvas.width * newZoom;
+    const scaledHeight = targetCanvas.height * newZoom;
+    const panX = (viewportWidth - scaledWidth) / 2 - targetX * newZoom;
+    const panY = (viewportHeight - scaledHeight) / 2 - targetY * newZoom;
+    
+    set({ 
+      zoom: Math.max(0.1, Math.min(3, newZoom)), 
+      panOffset: { x: panX, y: panY },
+      activeCanvasId: canvasId,
+    });
+  },
 
   undo: () => {
     set((state) => {

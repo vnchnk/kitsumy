@@ -28,6 +28,7 @@ export const AIGeneratorPanel = () => {
   const { project, addCanvas, setActiveCanvas, updateCanvas, addElements, setPaperSize } = useEditorStore();
 
   const [prompt, setPrompt] = useState('');
+  const [maxPages, setMaxPages] = useState<number>(999); // Default: all pages
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState('');
@@ -55,14 +56,17 @@ export const AIGeneratorPanel = () => {
     let startTime = Date.now();
 
     try {
+      const requestBody = {
+        mode: 'learning',
+        prompt: prompt.trim(),
+        maxPages: maxPages,
+        userContext: {},
+      };
+      
       const response = await fetch('http://localhost:3001/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mode: 'learning',
-          prompt: prompt.trim(),
-          userContext: {},
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -313,12 +317,30 @@ export const AIGeneratorPanel = () => {
     }
   };
 
+
   return (
     <div className="space-y-3">
       <label className="text-[#888] text-sm flex items-center gap-2">
         <Sparkles size={14} className="text-[#3b82f6]" />
         AI Comic Generator
       </label>
+
+      <div>
+        <label className="text-[#666] text-xs mb-1.5 block">Pages</label>
+        <select
+          value={maxPages}
+          onChange={(e) => setMaxPages(Number(e.target.value))}
+          className="w-full bg-[#252525] text-white text-sm px-3 py-2 rounded border border-[#333] focus:border-[#3b82f6] outline-none"
+          disabled={isGenerating}
+        >
+          <option value={999}>All</option>
+          <option value={1}>1 page</option>
+          <option value={3}>3 pages</option>
+          <option value={5}>5 pages</option>
+          <option value={10}>10 pages</option>
+          <option value={20}>20 pages</option>
+        </select>
+      </div>
 
       <textarea
         value={prompt}

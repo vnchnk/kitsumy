@@ -887,6 +887,7 @@ export const EditorCanvas = () => {
       
       <div
         ref={containerRef}
+        data-editor-canvas
         className="flex-1 overflow-hidden bg-[#0a0a0a] relative select-none"
         style={{
           cursor: isPanning

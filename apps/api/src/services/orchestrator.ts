@@ -96,8 +96,17 @@ class DeepHistoryPipeline implements Pipeline {
     });
   }
 
+  private getImageStylePrompt(): string {
+    return "Professional comic book illustration, detailed artwork, dramatic composition, vivid colors, high quality";
+  }
+
   async generate(req: GenerationRequest) {
-    console.log(`[HISTORY] Starting Dramatic Dive for: ${req.prompt}`);
+    console.log(`[DEBUG] Received request:`, JSON.stringify(req, null, 2));
+    const stylePrompt = this.getImageStylePrompt();
+    const maxPages = req.maxPages ?? 999; // Default: all pages
+    const maxPanels = maxPages * 4; // Estimate 3-4 panels per page average
+
+    console.log(`[HISTORY] Starting generation for: ${req.prompt} (Max pages: ${maxPages}, maxPanels: ${maxPanels})`);
 
     // --- PHASE 1: ARCHITECTURE (With Drama) ---
     console.log(`[1/3] Designing the saga with POV...`);
@@ -124,6 +133,13 @@ class DeepHistoryPipeline implements Pipeline {
       format_instructions: this.outlineParser.getFormatInstructions()
     });
 
+    // Limit chapters based on maxPages (roughly 1 chapter = 4 panels = 1 page)
+    const maxChapters = Math.max(1, maxPages);
+    if (outline.chapters.length > maxChapters) {
+      console.log(`[HISTORY] Limiting chapters from ${outline.chapters.length} to ${maxChapters}`);
+      outline.chapters = outline.chapters.slice(0, maxChapters);
+    }
+    
     console.log(`[HISTORY] Saga Outline: ${outline.chapters.length} chapters.`);
     outline.chapters.forEach(c => console.log(`   - ${c.title} (POV: ${c.pov})`));
 
@@ -171,7 +187,14 @@ class DeepHistoryPipeline implements Pipeline {
       }
     }));
 
-    const fullScript = chapterResults.flat();
+    let fullScript = chapterResults.flat();
+
+    // Limit panels based on maxPages
+    if (fullScript.length > maxPanels) {
+      console.log(`[HISTORY] Limiting from ${fullScript.length} to ${maxPanels} panels (${maxPages} pages)`);
+      fullScript = fullScript.slice(0, maxPanels);
+    }
+
     console.log(`[HISTORY] Full script ready: ${fullScript.length} panels.`);
 
     // --- PHASE 3: VISUALIZATION ---
@@ -254,7 +277,7 @@ class DeepHistoryPipeline implements Pipeline {
                 "black-forest-labs/flux-schnell:c846a69991daf4c0e5d016514849d14ee5b2e6846ce6b9d6f21369e564cfe51e",
                 {
                   input: {
-                    prompt: `Comic book panel illustration. ${safePrompt}. Professional comic art style, detailed, vibrant colors, dramatic composition.`,
+                    prompt: `${stylePrompt}. Scene: ${safePrompt}`,
                     num_outputs: 1,
                     aspect_ratio: "1:1",
                     output_format: "png",
@@ -268,7 +291,7 @@ class DeepHistoryPipeline implements Pipeline {
               // Generate with DALL-E 3
               const res = await this.openai.images.generate({
                   model: "dall-e-3",
-                  prompt: `Educational illustration in comic book art style. ${safePrompt}. Professional artistic quality, historical accuracy, cinematic composition.`,
+                  prompt: `${stylePrompt}. Scene: ${safePrompt}`,
                   n: 1,
                   size: "1024x1024",
                   quality: "standard"

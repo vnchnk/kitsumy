@@ -1,6 +1,6 @@
 import { useEditorStore } from '../store';
 import { PAPER_SIZES, PaperSize, CanvasLayout, BORDER_STYLES, BorderStyle } from '../types';
-import { Plus, Copy, Trash2, LayoutGrid, ArrowRight, ArrowDown } from 'lucide-react';
+import { Plus, Copy, Trash2, LayoutGrid, ArrowRight, ArrowDown, Focus } from 'lucide-react';
 
 export const PagesSidebar = () => {
   const {
@@ -13,6 +13,7 @@ export const PagesSidebar = () => {
     setPaperSize,
     setLayout,
     setBorderStyle,
+    focusOnCanvas,
   } = useEditorStore();
 
   if (!project) return null;
@@ -118,6 +119,19 @@ export const PagesSidebar = () => {
 
             {/* Actions */}
             <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  // Get viewport size from editor canvas container
+                  const container = document.querySelector('[data-editor-canvas]');
+                  const rect = container?.getBoundingClientRect();
+                  focusOnCanvas(canvas.id, rect?.width || 800, rect?.height || 600);
+                }}
+                title="Focus"
+                className="p-1 bg-[#333] rounded hover:bg-[#444] transition-colors"
+              >
+                <Focus size={12} className="text-[#888]" />
+              </button>
               <button
                 onClick={(e) => {
                   e.stopPropagation();

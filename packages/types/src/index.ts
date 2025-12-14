@@ -15,6 +15,8 @@ export interface ComicPanel {
 export interface GenerationRequest {
   mode: AppMode;
   prompt: string;
+  artStyle?: ArtStyle;
+  maxPages?: number;  // Limit number of pages (1-20), default: unlimited
   userContext: {
     gradeLevel?: number;
     mood?: string;

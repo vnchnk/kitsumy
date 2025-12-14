@@ -13,7 +13,7 @@ function App() {
       const res = await fetch('http://localhost:3001/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode, prompt, userContext: {} })
+        body: JSON.stringify({ mode, prompt, maxPages: 3, userContext: {} })
       });
       const json = await res.json();
       if (json.success) {
