@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { TemplatesPanel } from './TemplatesPanel';
 import { PolygonEditor } from './PolygonEditor';
+import { AIGeneratorPanel } from './AIGeneratorPanel';
 
 export const PropertiesPanel = () => {
   const {
@@ -83,6 +84,10 @@ export const PropertiesPanel = () => {
               </div>
             </>
           )}
+
+          <div className="border-t border-[#333] pt-4">
+            <AIGeneratorPanel />
+          </div>
 
           <div className="border-t border-[#333] pt-4">
             <TemplatesPanel />

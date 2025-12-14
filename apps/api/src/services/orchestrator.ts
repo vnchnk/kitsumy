@@ -6,8 +6,15 @@ import { StructuredOutputParser } from "langchain/output_parsers";
 import { PromptTemplate } from "@langchain/core/prompts";
 import { OpenAI } from "openai";
 import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const IMAGES_DIR = path.join(__dirname, '../../../web/public/generated');
 
 // SCHEMAS
 
@@ -43,8 +50,8 @@ class DeepHistoryPipeline implements Pipeline {
   private outlineParser: StructuredOutputParser<typeof outlineSchema>;
   private chapterParser: StructuredOutputParser<typeof chapterBatchSchema>;
   private openai: OpenAI;
-  
-  private MOCK_IMAGES = true; 
+
+  private MOCK_IMAGES = false; // Enable real DALL-E 3 image generation 
 
   constructor() {
     this.model = new ChatOpenAI({ 
@@ -137,27 +144,103 @@ class DeepHistoryPipeline implements Pipeline {
     // --- PHASE 3: VISUALIZATION ---
     console.log(`[3/3] Rendering images (MOCK: ${this.MOCK_IMAGES})...`);
 
-    const generateImage = async (prompt: string, idx: number) => {
+    // Ensure images directory exists
+    if (!fs.existsSync(IMAGES_DIR)) {
+      fs.mkdirSync(IMAGES_DIR, { recursive: true });
+    }
+
+    const downloadAndSaveImage = async (url: string, filename: string): Promise<string> => {
+      try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`Failed to download: ${response.statusText}`);
+
+        const buffer = await response.arrayBuffer();
+        const filepath = path.join(IMAGES_DIR, filename);
+        fs.writeFileSync(filepath, Buffer.from(buffer));
+
+        return `/generated/${filename}`;
+      } catch (e: any) {
+        console.error(`[IMAGE] Download failed: ${e.message}`);
+        throw e;
+      }
+    };
+
+    const generateImage = async (prompt: string, idx: number, retries = 3): Promise<string> => {
         if (this.MOCK_IMAGES) {
             return `https://placehold.co/1024x1024/222/FFF?text=${encodeURIComponent(prompt.slice(0,30))}`;
         }
-        try {
+
+        for (let attempt = 1; attempt <= retries; attempt++) {
+          try {
+            console.log(`[IMAGE ${idx + 1}] Generating (attempt ${attempt}/${retries})...`);
+
+            // Sanitize prompt for safety system
+            let safePrompt = prompt
+              .replace(/gun|weapon|blood|violence|war|battle|fight|attack|kill/gi, '')
+              .replace(/\s+/g, ' ')
+              .trim();
+
+            // If prompt becomes too short after sanitization, use generic description
+            if (safePrompt.length < 20) {
+              safePrompt = 'A dramatic historical scene with people and period-accurate setting';
+            }
+
             const res = await this.openai.images.generate({
                 model: "dall-e-3",
-                prompt: `Comic book style. ${prompt}. Cinematic lighting, gritty texture, masterpiece.`,
-                n: 1, size: "1024x1024", quality: "standard"
+                prompt: `Educational illustration in comic book art style. ${safePrompt}. Professional artistic quality, historical accuracy, cinematic composition.`,
+                n: 1,
+                size: "1024x1024",
+                quality: "standard"
             });
-            return res.data[0].url;
-        } catch (e) {
-            return `https://placehold.co/1024x1024/500/FFF?text=Error`;
+
+            const dalleUrl = res.data[0].url;
+            if (!dalleUrl) throw new Error('No URL returned from DALL-E');
+
+            console.log(`[IMAGE ${idx + 1}] Generated, downloading...`);
+            const filename = `panel-${Date.now()}-${idx}.png`;
+            const localUrl = await downloadAndSaveImage(dalleUrl, filename);
+
+            console.log(`[IMAGE ${idx + 1}] Saved as ${filename}`);
+            return localUrl;
+          } catch (e: any) {
+            console.error(`[IMAGE ${idx + 1}] Attempt ${attempt} failed: ${e.message}`);
+
+            if (attempt === retries) {
+              console.error(`[IMAGE ${idx + 1}] All retries exhausted, using placeholder`);
+              return `https://placehold.co/1024x1024/500/FFF?text=Error`;
+            }
+
+            // Wait before retry (exponential backoff)
+            await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+          }
         }
+
+        return `https://placehold.co/1024x1024/500/FFF?text=Error`;
     };
 
-    const finalPanels = await Promise.all(fullScript.map(async (panel, i) => ({
-        id: `p-${i}`,
+    // Generate images with rate limiting (max 5 per minute to be safe)
+    const finalPanels = [];
+    const BATCH_SIZE = 5;
+    const BATCH_DELAY = 60000; // 1 minute
+
+    for (let i = 0; i < fullScript.length; i += BATCH_SIZE) {
+      const batch = fullScript.slice(i, i + BATCH_SIZE);
+      console.log(`[IMAGES] Processing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(fullScript.length / BATCH_SIZE)}`);
+
+      const batchResults = await Promise.all(batch.map(async (panel, batchIdx) => ({
+        id: `p-${i + batchIdx}`,
         ...panel,
-        imageUrl: await generateImage(panel.visualPrompt, i)
-    })));
+        imageUrl: await generateImage(panel.visualPrompt, i + batchIdx)
+      })));
+
+      finalPanels.push(...batchResults);
+
+      // Wait before next batch (except for the last one)
+      if (i + BATCH_SIZE < fullScript.length) {
+        console.log(`[IMAGES] Waiting 60s before next batch to avoid rate limits...`);
+        await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
+      }
+    }
 
     return {
       type: 'comic',
@@ -176,7 +259,7 @@ export class Orchestrator {
     this.pipelines = {
       [AppMode.LEARNING]: deepHistory,
       [AppMode.CREATIVE]: deepHistory,
-      [AppMode.THERAPY]: deepHistory, 
+      [AppMode.THERAPY]: deepHistory,
     };
   }
 
