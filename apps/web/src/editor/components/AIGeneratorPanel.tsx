@@ -32,6 +32,7 @@ export const AIGeneratorPanel = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState('');
+  const [estimatedTime, setEstimatedTime] = useState('');
 
   const generateFromAI = async () => {
     if (!prompt.trim()) {
@@ -41,29 +42,18 @@ export const AIGeneratorPanel = () => {
 
     setIsGenerating(true);
     setError(null);
+    setEstimatedTime('');
 
-    // Simulate progress updates
-    const progressMessages = [
-      'Architecting the story...',
-      'Designing chapters with POV...',
-      'Writing cinematic scripts...',
-      'Generating images (batch 1)...',
-      'Generating images (batch 2)...',
-      'Generating images (batch 3)...',
-      'Generating images (batch 4)...',
-      'Downloading and saving images...',
-      'Almost done...'
-    ];
+    // Initial phases with time estimates
+    const SECONDS_PER_IMAGE = 12; // 12 seconds per image due to rate limiting
+    const AVERAGE_PANELS = 35; // Typical: 7 chapters × 5 panels
+    const ARCHITECTURE_TIME = 30; // seconds
+    const SCRIPTWRITING_TIME = 60; // seconds
 
-    let currentStep = 0;
-    setProgress(progressMessages[0]);
+    setProgress('Architecting the story...');
+    setEstimatedTime(`Estimated total time: ${Math.ceil((ARCHITECTURE_TIME + SCRIPTWRITING_TIME + AVERAGE_PANELS * SECONDS_PER_IMAGE) / 60)} minutes`);
 
-    const progressInterval = setInterval(() => {
-      currentStep++;
-      if (currentStep < progressMessages.length) {
-        setProgress(progressMessages[currentStep]);
-      }
-    }, 15000); // Update every 15 seconds
+    let startTime = Date.now();
 
     try {
       const response = await fetch('http://localhost:3001/generate', {
@@ -76,8 +66,6 @@ export const AIGeneratorPanel = () => {
         }),
       });
 
-      clearInterval(progressInterval);
-
       if (!response.ok) {
         throw new Error('Failed to generate comic');
       }
@@ -88,22 +76,28 @@ export const AIGeneratorPanel = () => {
         throw new Error(result.error || 'Generation failed');
       }
 
-      setProgress('Converting to pages...');
+      const totalPanels = result.data.panels.length;
+      const elapsedMinutes = Math.ceil((Date.now() - startTime) / 60000);
+
+      setProgress(`Converting to pages... (Generated ${totalPanels} panels in ${elapsedMinutes} min)`);
+      setEstimatedTime('');
+
       await convertAIPanelsToProject(result.data);
 
       setProgress('Done!');
       setTimeout(() => {
         setPrompt('');
         setProgress('');
+        setEstimatedTime('');
         setIsGenerating(false);
       }, 1000);
 
     } catch (err) {
-      clearInterval(progressInterval);
       console.error('AI Generation error:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
       setIsGenerating(false);
       setProgress('');
+      setEstimatedTime('');
     }
   };
 
@@ -303,9 +297,16 @@ export const AIGeneratorPanel = () => {
       )}
 
       {progress && (
-        <div className="text-[#3b82f6] text-xs bg-blue-900/20 border border-blue-900/50 rounded px-3 py-2 flex items-center gap-2">
-          <Loader2 size={12} className="animate-spin" />
-          {progress}
+        <div className="text-[#3b82f6] text-xs bg-blue-900/20 border border-blue-900/50 rounded px-3 py-2">
+          <div className="flex items-center gap-2">
+            <Loader2 size={12} className="animate-spin" />
+            <span>{progress}</span>
+          </div>
+          {estimatedTime && (
+            <div className="text-[#888] mt-1 ml-5">
+              {estimatedTime}
+            </div>
+          )}
         </div>
       )}
 

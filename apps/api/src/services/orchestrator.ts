@@ -5,6 +5,7 @@ import { RunnableSequence } from "@langchain/core/runnables";
 import { StructuredOutputParser } from "langchain/output_parsers";
 import { PromptTemplate } from "@langchain/core/prompts";
 import { OpenAI } from "openai";
+import Replicate from "replicate";
 import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
@@ -15,6 +16,14 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const IMAGES_DIR = path.join(__dirname, '../../../web/public/generated');
+
+// Text generation provider
+type TextProvider = 'openai' | 'openrouter';
+const TEXT_PROVIDER: TextProvider = (process.env.TEXT_PROVIDER as TextProvider) || 'openrouter';
+
+// Image generation provider
+type ImageProvider = 'dalle' | 'flux';
+const IMAGE_PROVIDER: ImageProvider = (process.env.IMAGE_PROVIDER as ImageProvider) || 'flux';
 
 // SCHEMAS
 
@@ -50,17 +59,40 @@ class DeepHistoryPipeline implements Pipeline {
   private outlineParser: StructuredOutputParser<typeof outlineSchema>;
   private chapterParser: StructuredOutputParser<typeof chapterBatchSchema>;
   private openai: OpenAI;
+  private replicate: Replicate;
 
-  private MOCK_IMAGES = false; // Enable real DALL-E 3 image generation 
+  private MOCK_IMAGES = false; // Enable real image generation
 
   constructor() {
-    this.model = new ChatOpenAI({ 
-      modelName: "gpt-4-turbo-preview", 
-      temperature: 0.7 
-    });
+    // Configure text generation model based on provider
+    if (TEXT_PROVIDER === 'openrouter') {
+      this.model = new ChatOpenAI({
+        modelName: "deepseek/deepseek-chat", // DeepSeek V3: $0.14 input / $0.28 output per 1M tokens
+        temperature: 0.7,
+        configuration: {
+          baseURL: "https://openrouter.ai/api/v1",
+          defaultHeaders: {
+            "HTTP-Referer": "https://kitsumy.com",
+            "X-Title": "Kitsumy Comic Generator"
+          }
+        },
+        apiKey: process.env.OPENROUTER_API_KEY,
+      });
+      console.log(`[TEXT] Using OpenRouter with deepseek/deepseek-chat`);
+    } else {
+      this.model = new ChatOpenAI({
+        modelName: "gpt-4-turbo-preview",
+        temperature: 0.7
+      });
+      console.log(`[TEXT] Using OpenAI GPT-4 Turbo`);
+    }
+
     this.outlineParser = StructuredOutputParser.fromZodSchema(outlineSchema);
     this.chapterParser = StructuredOutputParser.fromZodSchema(chapterBatchSchema);
     this.openai = new OpenAI();
+    this.replicate = new Replicate({
+      auth: process.env.REPLICATE_API_TOKEN,
+    });
   }
 
   async generate(req: GenerationRequest) {
@@ -165,14 +197,14 @@ class DeepHistoryPipeline implements Pipeline {
       }
     };
 
-    const generateImage = async (prompt: string, idx: number, retries = 3): Promise<string> => {
+    const generateImage = async (prompt: string, idx: number, retries = 5): Promise<string> => {
         if (this.MOCK_IMAGES) {
             return `https://placehold.co/1024x1024/222/FFF?text=${encodeURIComponent(prompt.slice(0,30))}`;
         }
 
         for (let attempt = 1; attempt <= retries; attempt++) {
           try {
-            console.log(`[IMAGE ${idx + 1}] Generating (attempt ${attempt}/${retries})...`);
+            console.log(`[IMAGE ${idx + 1}] Generating with ${IMAGE_PROVIDER.toUpperCase()} (attempt ${attempt}/${retries})...`);
 
             // Sanitize prompt for safety system
             let safePrompt = prompt
@@ -185,43 +217,86 @@ class DeepHistoryPipeline implements Pipeline {
               safePrompt = 'A dramatic historical scene with people and period-accurate setting';
             }
 
-            const res = await this.openai.images.generate({
-                model: "dall-e-3",
-                prompt: `Educational illustration in comic book art style. ${safePrompt}. Professional artistic quality, historical accuracy, cinematic composition.`,
-                n: 1,
-                size: "1024x1024",
-                quality: "standard"
-            });
+            let imageUrl: string;
 
-            const dalleUrl = res.data[0].url;
-            if (!dalleUrl) throw new Error('No URL returned from DALL-E');
+            if (IMAGE_PROVIDER === 'flux') {
+              // Generate with Replicate Flux Schnell
+              const output = await this.replicate.run(
+                "black-forest-labs/flux-schnell:c846a69991daf4c0e5d016514849d14ee5b2e6846ce6b9d6f21369e564cfe51e",
+                {
+                  input: {
+                    prompt: `Comic book panel illustration. ${safePrompt}. Professional comic art style, detailed, vibrant colors, dramatic composition.`,
+                    num_outputs: 1,
+                    aspect_ratio: "1:1",
+                    output_format: "png",
+                    output_quality: 90
+                  }
+                }
+              );
+
+              imageUrl = Array.isArray(output) ? output[0] : output as string;
+            } else {
+              // Generate with DALL-E 3
+              const res = await this.openai.images.generate({
+                  model: "dall-e-3",
+                  prompt: `Educational illustration in comic book art style. ${safePrompt}. Professional artistic quality, historical accuracy, cinematic composition.`,
+                  n: 1,
+                  size: "1024x1024",
+                  quality: "standard"
+              });
+
+              imageUrl = res.data[0].url || '';
+            }
+
+            if (!imageUrl) throw new Error('No URL returned from image generation');
 
             console.log(`[IMAGE ${idx + 1}] Generated, downloading...`);
             const filename = `panel-${Date.now()}-${idx}.png`;
-            const localUrl = await downloadAndSaveImage(dalleUrl, filename);
+            const localUrl = await downloadAndSaveImage(imageUrl, filename);
 
             console.log(`[IMAGE ${idx + 1}] Saved as ${filename}`);
             return localUrl;
           } catch (e: any) {
+            const errorDetails = {
+              timestamp: new Date().toISOString(),
+              imageIndex: idx + 1,
+              attempt,
+              provider: IMAGE_PROVIDER,
+              error: e.message,
+              prompt: prompt.slice(0, 100),
+              statusCode: e.response?.status || 'unknown',
+              errorData: e.response?.data || e.toString()
+            };
+
             console.error(`[IMAGE ${idx + 1}] Attempt ${attempt} failed: ${e.message}`);
+
+            // Log detailed error to file
+            const logDir = path.join(__dirname, '../../../logs');
+            if (!fs.existsSync(logDir)) {
+              fs.mkdirSync(logDir, { recursive: true });
+            }
+            fs.appendFileSync(
+              path.join(logDir, 'image-errors.log'),
+              JSON.stringify(errorDetails, null, 2) + '\n---\n'
+            );
 
             if (attempt === retries) {
               console.error(`[IMAGE ${idx + 1}] All retries exhausted, using placeholder`);
               return `https://placehold.co/1024x1024/500/FFF?text=Error`;
             }
 
-            // Wait before retry (exponential backoff)
-            await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+            // Wait before retry (exponential backoff: 2s, 4s, 6s, 8s, 10s)
+            await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
           }
         }
 
         return `https://placehold.co/1024x1024/500/FFF?text=Error`;
     };
 
-    // Generate images with rate limiting (max 5 per minute to be safe)
+    // Generate images with rate limiting (1 per batch to respect Replicate limits for accounts < $5)
     const finalPanels = [];
-    const BATCH_SIZE = 5;
-    const BATCH_DELAY = 60000; // 1 minute
+    const BATCH_SIZE = 1; // Reduced from 5 to 1 to avoid rate limits
+    const BATCH_DELAY = 12000; // 12 seconds between images (5 per minute = safe buffer)
 
     for (let i = 0; i < fullScript.length; i += BATCH_SIZE) {
       const batch = fullScript.slice(i, i + BATCH_SIZE);
