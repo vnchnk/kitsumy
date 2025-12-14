@@ -10,6 +10,7 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import sharp from 'sharp';
 
 dotenv.config();
 
@@ -197,6 +198,34 @@ class DeepHistoryPipeline implements Pipeline {
       }
     };
 
+    const enhanceImage = async (filepath: string): Promise<void> => {
+      try {
+        const image = sharp(filepath);
+        const metadata = await image.metadata();
+
+        // Comic book enhancement pipeline
+        await image
+          .modulate({
+            brightness: 1.05,      // Slight brightness boost
+            saturation: 1.25,      // 25% more saturation for vibrant colors
+          })
+          .sharpen({
+            sigma: 1.2,            // Edge enhancement for crisp lines
+            m1: 0.8,               // Gentle sharpening
+            m2: 0.2
+          })
+          .linear(1.1, -(128 * 0.1))  // Increase contrast slightly
+          .toFile(filepath + '.tmp');
+
+        // Replace original with enhanced version
+        fs.renameSync(filepath + '.tmp', filepath);
+        console.log(`[IMAGE] Enhanced: ${path.basename(filepath)}`);
+      } catch (e: any) {
+        console.error(`[IMAGE] Enhancement failed for ${path.basename(filepath)}: ${e.message}`);
+        // Continue without enhancement if it fails
+      }
+    };
+
     const generateImage = async (prompt: string, idx: number, retries = 5): Promise<string> => {
         if (this.MOCK_IMAGES) {
             return `https://placehold.co/1024x1024/222/FFF?text=${encodeURIComponent(prompt.slice(0,30))}`;
@@ -254,7 +283,11 @@ class DeepHistoryPipeline implements Pipeline {
             const filename = `panel-${Date.now()}-${idx}.png`;
             const localUrl = await downloadAndSaveImage(imageUrl, filename);
 
-            console.log(`[IMAGE ${idx + 1}] Saved as ${filename}`);
+            // Apply comic book enhancement
+            const filepath = path.join(IMAGES_DIR, filename);
+            await enhanceImage(filepath);
+
+            console.log(`[IMAGE ${idx + 1}] Saved and enhanced as ${filename}`);
             return localUrl;
           } catch (e: any) {
             const errorDetails = {

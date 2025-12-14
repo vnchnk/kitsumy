@@ -23,7 +23,6 @@ interface AIGenerationResponse {
   error?: string;
 }
 
-const PANELS_PER_PAGE = 3; // Fewer panels per page for better layout
 
 export const AIGeneratorPanel = () => {
   const { project, addCanvas, setActiveCanvas, updateCanvas, addElements, setPaperSize } = useEditorStore();
@@ -111,10 +110,31 @@ export const AIGeneratorPanel = () => {
     // Set paper size to A4 Portrait
     setPaperSize('A4');
 
-    // Group panels into pages (PANELS_PER_PAGE panels per page)
+    // Smart grouping: vary panels per page for visual interest
     const pageGroups: AIPanel[][] = [];
-    for (let i = 0; i < data.panels.length; i += PANELS_PER_PAGE) {
-      pageGroups.push(data.panels.slice(i, i + PANELS_PER_PAGE));
+    let i = 0;
+    while (i < data.panels.length) {
+      // Choose panel count based on position and remaining panels
+      let panelsInPage: number;
+      const remaining = data.panels.length - i;
+
+      if (i === 0) {
+        // First page: dramatic single panel or 2 panels
+        panelsInPage = remaining >= 2 ? 2 : 1;
+      } else if (remaining === 1) {
+        // Last panel alone: give it full page
+        panelsInPage = 1;
+      } else if (remaining <= 3) {
+        // Last few panels: group them nicely
+        panelsInPage = remaining;
+      } else {
+        // Vary between 3, 4, or 6 panels for visual diversity
+        const options = [3, 4, 6].filter(n => n <= remaining);
+        panelsInPage = options[Math.floor(Math.random() * options.length)];
+      }
+
+      pageGroups.push(data.panels.slice(i, i + panelsInPage));
+      i += panelsInPage;
     }
 
     const paperSize = PAPER_SIZES['A4'];
@@ -126,7 +146,7 @@ export const AIGeneratorPanel = () => {
     // Layout templates for different panel counts
     const getLayoutForPanels = (count: number) => {
       if (count === 1) {
-        // Single large panel
+        // Single dramatic splash page
         return [{ x: 0, y: 0, w: 1, h: 1 }];
       } else if (count === 2) {
         // Two stacked panels
@@ -140,6 +160,24 @@ export const AIGeneratorPanel = () => {
           { x: 0, y: 0, w: 1, h: 0.45 },
           { x: 0, y: 0.48, w: 0.48, h: 0.52 },
           { x: 0.52, y: 0.48, w: 0.48, h: 0.52 },
+        ];
+      } else if (count === 4) {
+        // 2x2 grid
+        return [
+          { x: 0, y: 0, w: 0.48, h: 0.48 },
+          { x: 0.52, y: 0, w: 0.48, h: 0.48 },
+          { x: 0, y: 0.52, w: 0.48, h: 0.48 },
+          { x: 0.52, y: 0.52, w: 0.48, h: 0.48 },
+        ];
+      } else if (count === 6) {
+        // 3x2 grid (comic book classic)
+        return [
+          { x: 0, y: 0, w: 0.48, h: 0.31 },
+          { x: 0.52, y: 0, w: 0.48, h: 0.31 },
+          { x: 0, y: 0.345, w: 0.48, h: 0.31 },
+          { x: 0.52, y: 0.345, w: 0.48, h: 0.31 },
+          { x: 0, y: 0.69, w: 0.48, h: 0.31 },
+          { x: 0.52, y: 0.69, w: 0.48, h: 0.31 },
         ];
       }
       return [];
@@ -333,8 +371,9 @@ export const AIGeneratorPanel = () => {
         <ul className="space-y-1 list-disc list-inside">
           <li>AI creates a narrative arc with 6-10 chapters</li>
           <li>Each chapter gets 3-5 cinematic panels</li>
-          <li>Images generated via DALL-E 3 (or placeholders)</li>
-          <li>{PANELS_PER_PAGE} panels per page in comic layout</li>
+          <li>Images generated via Flux Schnell ($0.003/image)</li>
+          <li>Dynamic layouts: 1-6 panels per page for variety</li>
+          <li>Auto enhancement: vibrant colors + sharp edges</li>
           <li>Text overlays positioned over images</li>
         </ul>
       </div>
