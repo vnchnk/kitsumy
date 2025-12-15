@@ -15,7 +15,17 @@ export type ComicStyle =
   | 'cyberpunk'         // Sci-fi neon
   | 'whimsical'         // Children's book
   | 'horror'            // Dark fantasy
-  | 'minimalist';       // Modern minimal
+  | 'minimalist'        // Modern minimal
+  | 'ukiyo-e'           // Japanese woodblock print
+  | 'pop-art'           // Lichtenstein style
+  | 'sketch'            // Pencil storyboard
+  | 'cel-shaded'        // Borderlands/Spider-Verse
+  | 'pulp'              // 1930s-40s pulp fiction
+  | 'woodcut'           // Medieval woodcut print
+  | 'art-nouveau'       // Alphonse Mucha style
+  | 'graffiti'          // Street art / spray paint
+  | 'chibi'             // Super-deformed cute
+  | 'soviet-poster';    // Soviet propaganda poster
 
 export const COMIC_STYLE_NAMES: Record<ComicStyle, string> = {
   'american-classic': 'American Classic',
@@ -27,7 +37,17 @@ export const COMIC_STYLE_NAMES: Record<ComicStyle, string> = {
   'cyberpunk': 'Cyberpunk',
   'whimsical': 'Whimsical',
   'horror': 'Horror',
-  'minimalist': 'Minimalist'
+  'minimalist': 'Minimalist',
+  'ukiyo-e': 'Ukiyo-e',
+  'pop-art': 'Pop Art',
+  'sketch': 'Sketch',
+  'cel-shaded': 'Cel-Shaded',
+  'pulp': 'Pulp Fiction',
+  'woodcut': 'Woodcut',
+  'art-nouveau': 'Art Nouveau',
+  'graffiti': 'Graffiti',
+  'chibi': 'Chibi',
+  'soviet-poster': 'Soviet Poster'
 };
 
 export interface ComicPanel {

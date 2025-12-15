@@ -256,6 +256,166 @@ class DeepHistoryPipeline implements Pipeline {
         "Elegant simplicity with purposeful details"
       ].join(", "),
       avoid: "detailed, busy, crosshatching, gradients, realistic, ornate"
+    },
+
+    // Ukiyo-e / Japanese Woodblock Print style
+    'ukiyo-e': {
+      name: 'Ukiyo-e',
+      prompt: [
+        "Traditional Japanese ukiyo-e woodblock print illustration style",
+        "Flat areas of color with bold black outlines",
+        "Distinctive wave patterns and nature motifs inspired by Hokusai",
+        "Elegant flowing lines depicting fabric and hair",
+        "Limited traditional color palette with indigo, vermillion, and earth tones",
+        "Stylized clouds, water, and mountain forms",
+        "Decorative patterns and textile details",
+        "Asymmetrical compositions with dramatic perspective"
+      ].join(", "),
+      avoid: "photorealistic, 3D shading, western style, modern, digital effects"
+    },
+
+    // Pop Art / Lichtenstein style
+    'pop-art': {
+      name: 'Pop Art',
+      prompt: [
+        "Pop art comic illustration in the style of Roy Lichtenstein",
+        "Bold Ben-Day dots pattern filling large areas",
+        "Primary colors: bright red, yellow, blue with black outlines",
+        "Thick black outlines with clean graphic shapes",
+        "Dramatic close-ups of faces and objects",
+        "Speech bubbles and onomatopoeia text effects",
+        "High contrast with flat color areas",
+        "Commercial advertising aesthetic from 1960s"
+      ].join(", "),
+      avoid: "subtle gradients, muted colors, realistic shading, soft edges, painterly"
+    },
+
+    // Sketch / Storyboard style
+    'sketch': {
+      name: 'Sketch',
+      prompt: [
+        "Rough pencil sketch storyboard illustration style",
+        "Loose gestural pencil strokes and hatching",
+        "Unfinished raw artistic quality",
+        "Visible construction lines and corrections",
+        "Grayscale with occasional color wash accents",
+        "Dynamic rough energy in line quality",
+        "Concept art and production design aesthetic",
+        "Expressive quick sketchy linework"
+      ].join(", "),
+      avoid: "polished, clean lines, digital, finished, colorful, perfect"
+    },
+
+    // Cel-Shaded / Video Game style
+    'cel-shaded': {
+      name: 'Cel-Shaded',
+      prompt: [
+        "Cel-shaded 3D render style like Borderlands and Spider-Verse",
+        "Bold black ink outlines on 3D forms",
+        "Flat color shading with hard shadow edges",
+        "Vibrant saturated color palette",
+        "Comic book halftone and speed line effects",
+        "Exaggerated stylized proportions",
+        "Dynamic camera angles and poses",
+        "Hand-drawn texture overlays on smooth surfaces"
+      ].join(", "),
+      avoid: "photorealistic, soft gradients, traditional 2D, muted colors, realistic lighting"
+    },
+
+    // Pulp Fiction / 1930s-40s style
+    'pulp': {
+      name: 'Pulp Fiction',
+      prompt: [
+        "1930s-40s pulp magazine cover illustration style",
+        "Dramatic painted realism with bold colors",
+        "Sensational action scenes and dangerous situations",
+        "Femme fatales and hard-boiled detectives",
+        "Warm sepia and amber tones with splashes of red",
+        "Theatrical lighting with deep shadows",
+        "Vintage printing texture and grain",
+        "Adventure and mystery atmosphere"
+      ].join(", "),
+      avoid: "modern, clean, minimalist, anime, cute, digital"
+    },
+
+    // Woodcut / Medieval Print style
+    'woodcut': {
+      name: 'Woodcut',
+      prompt: [
+        "Medieval woodcut print illustration style",
+        "Bold black lines carved into wood block aesthetic",
+        "High contrast black and white with no gradients",
+        "Rough textured edges and imperfect lines",
+        "Cross-hatching for shading and depth",
+        "Historical manuscript and early printing press look",
+        "Gothic and medieval subject matter styling",
+        "Dramatic religious iconography influence"
+      ].join(", "),
+      avoid: "colorful, smooth gradients, photorealistic, modern, digital, anime"
+    },
+
+    // Art Nouveau / Mucha style
+    'art-nouveau': {
+      name: 'Art Nouveau',
+      prompt: [
+        "Art Nouveau illustration style inspired by Alphonse Mucha",
+        "Elegant flowing organic lines and curves",
+        "Decorative floral and botanical frames",
+        "Beautiful women with flowing hair and robes",
+        "Muted earth tones with gold accents",
+        "Intricate ornamental borders and patterns",
+        "Symmetrical compositions with central figures",
+        "Romantic and dreamy atmosphere"
+      ].join(", "),
+      avoid: "harsh angles, gritty, modern, minimalist, cartoon, anime"
+    },
+
+    // Graffiti / Street Art style
+    'graffiti': {
+      name: 'Graffiti',
+      prompt: [
+        "Urban street art graffiti illustration style",
+        "Bold spray paint aesthetic with drips and splatters",
+        "Vibrant neon colors on concrete and brick textures",
+        "Wildstyle lettering and tag influences",
+        "Stencil art and wheat paste poster elements",
+        "Urban decay and city environment backgrounds",
+        "Bold outlines with gradient fills",
+        "Raw rebellious energy and street culture"
+      ].join(", "),
+      avoid: "clean, polished, traditional, fine art, subtle, muted colors"
+    },
+
+    // Chibi / Super-deformed style
+    'chibi': {
+      name: 'Chibi',
+      prompt: [
+        "Chibi super-deformed cute illustration style",
+        "Oversized heads with tiny bodies (2-3 head ratio)",
+        "Large sparkling eyes with simple features",
+        "Rounded soft shapes and pudgy proportions",
+        "Bright cheerful pastel and candy colors",
+        "Exaggerated cute expressions and emotions",
+        "Simple hands and feet with minimal details",
+        "Kawaii Japanese aesthetic with sparkles and hearts"
+      ].join(", "),
+      avoid: "realistic proportions, dark, gritty, detailed anatomy, horror, mature"
+    },
+
+    // Soviet Propaganda Poster style
+    'soviet-poster': {
+      name: 'Soviet Poster',
+      prompt: [
+        "Soviet constructivist propaganda poster illustration style",
+        "Bold red, black, and gold color palette",
+        "Strong geometric shapes and diagonal compositions",
+        "Heroic worker and peasant figures",
+        "Dramatic upward-looking perspective",
+        "Bold sans-serif typography integration",
+        "Flat graphic shapes with minimal shading",
+        "Revolutionary and industrial imagery"
+      ].join(", "),
+      avoid: "soft, pastel, detailed, realistic shading, cute, western style"
     }
   };
 

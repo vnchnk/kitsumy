@@ -14,7 +14,17 @@ const STYLES: ComicStyle[] = [
   'cyberpunk',
   'whimsical',
   'horror',
-  'minimalist'
+  'minimalist',
+  'ukiyo-e',
+  'pop-art',
+  'sketch',
+  'cel-shaded',
+  'pulp',
+  'woodcut',
+  'art-nouveau',
+  'graffiti',
+  'chibi',
+  'soviet-poster'
 ];
 
 const createId = () => Math.random().toString(36).slice(2, 11);
