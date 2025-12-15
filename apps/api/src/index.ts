@@ -15,6 +15,8 @@ app.post('/generate', async (request, reply) => {
     const result = await orchestrator.dispatch({
       mode: body.mode || AppMode.LEARNING,
       prompt: body.prompt,
+      style: body.style,
+      maxPages: body.maxPages,
       userContext: body.userContext || {}
     });
     return { success: true, data: result };

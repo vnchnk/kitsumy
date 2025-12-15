@@ -6,8 +6,8 @@
     "packages/*"
   ],
   "scripts": {
-    "start": "concurrently -n \"API,WEB\" -c \"cyan.bold,magenta.bold\" --prefix \"[{name}]\" --prefix-colors \"cyan.bold,magenta.bold\" \"npm run dev -w @kitsumy/api\" \"npm run dev -w @kitsumy/web\"",
-    "dev": "concurrently -n \"API,WEB\" -c \"cyan.bold,magenta.bold\" \"npm run dev -w @kitsumy/api\" \"npm run dev -w @kitsumy/web\"",
+    "start": "concurrently -n API,WEB -c cyan.bold,magenta.bold \"npm run dev -w @kitsumy/api\" \"npm run dev -w @kitsumy/web\"",
+    "dev": "concurrently -n API,WEB -c cyan.bold,magenta.bold \"npm run dev -w @kitsumy/api\" \"npm run dev -w @kitsumy/web\"",
     "build": "npm run build --workspaces --if-present"
   },
   "devDependencies": {

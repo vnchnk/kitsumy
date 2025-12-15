@@ -2,18 +2,34 @@ import { useState } from 'react';
 import { OmniInput } from './components/OmniInput';
 import { ComicReader } from './components/ComicReader';
 import { useSession } from './store/useSession';
-import { AppMode } from '@kitsumy/types';
+import { AppMode, ComicStyle, COMIC_STYLE_NAMES } from '@kitsumy/types';
+
+const STYLES: ComicStyle[] = [
+  'american-classic',
+  'noir',
+  'manga',
+  'euro-bd',
+  'watercolor',
+  'retro',
+  'cyberpunk',
+  'whimsical',
+  'horror',
+  'minimalist'
+];
 
 function App() {
   const { mode } = useSession();
   const [comicData, setComicData] = useState(null);
+  const [style, setStyle] = useState<ComicStyle>('american-classic');
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleGenerate = async (prompt: string) => {
+    setIsLoading(true);
     try {
       const res = await fetch('http://localhost:3001/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode, prompt, maxPages: 3, userContext: {} })
+        body: JSON.stringify({ mode, prompt, style, maxPages: 1, userContext: {} })
       });
       const json = await res.json();
       if (json.success) {
@@ -21,6 +37,8 @@ function App() {
       }
     } catch (e) {
       console.error(e);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -43,11 +61,37 @@ function App() {
             {mode === AppMode.THERAPY && "Night Journal"}
           </span>
         </h1>
-        
-        <div className="w-full max-w-2xl mb-12">
-          <OmniInput onGenerate={handleGenerate} />
+
+        {/* Style Selector */}
+        <div className="w-full max-w-2xl mb-6">
+          <label className="block text-sm font-medium mb-2 opacity-70">Art Style</label>
+          <div className="grid grid-cols-5 gap-2">
+            {STYLES.map((s) => (
+              <button
+                key={s}
+                onClick={() => setStyle(s)}
+                disabled={isLoading}
+                className={`px-3 py-2 text-xs rounded-lg transition-all ${
+                  style === s
+                    ? 'bg-blue-600 text-white shadow-lg scale-105'
+                    : 'bg-white/10 hover:bg-white/20 text-current'
+                } ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                {COMIC_STYLE_NAMES[s]}
+              </button>
+            ))}
+          </div>
         </div>
-        
+
+        <div className="w-full max-w-2xl mb-12">
+          <OmniInput onGenerate={handleGenerate} disabled={isLoading} />
+          {isLoading && (
+            <div className="mt-4 text-center text-sm opacity-70">
+              Generating your comic with {COMIC_STYLE_NAMES[style]} style...
+            </div>
+          )}
+        </div>
+
         {comicData && <ComicReader comic={comicData} />}
       </div>
     </div>

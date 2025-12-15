@@ -5,19 +5,22 @@ import { Mic, BookOpen, Moon, Dna } from 'lucide-react';
 
 interface Props {
     onGenerate: (prompt: string) => void;
+    disabled?: boolean;
 }
 
-export const OmniInput = ({ onGenerate }: Props) => {
+export const OmniInput = ({ onGenerate, disabled }: Props) => {
   const { mode, setMode } = useSession();
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
-    if (!input) return;
+    if (!input || disabled) return;
     setLoading(true);
     await onGenerate(input);
     setLoading(false);
   };
+
+  const isDisabled = loading || disabled;
 
   const getBgColor = () => {
       switch(mode) {
@@ -63,12 +66,12 @@ export const OmniInput = ({ onGenerate }: Props) => {
                     className="flex-1 p-4 rounded-xl border-2 border-transparent focus:border-blue-500 outline-none text-black bg-gray-50 font-medium text-lg shadow-inner"
                     onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
                 />
-                <button 
+                <button
                     onClick={handleSubmit}
-                    disabled={loading}
+                    disabled={isDisabled}
                     className="px-8 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:shadow-lg hover:scale-105 transition-all disabled:opacity-50 disabled:scale-100 font-bold"
                 >
-                    {loading ? '...' : 'Go'}
+                    {isDisabled ? '...' : 'Go'}
                 </button>
             </div>
         )}

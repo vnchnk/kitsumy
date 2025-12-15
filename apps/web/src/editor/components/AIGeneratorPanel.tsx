@@ -2,6 +2,20 @@ import { useState } from 'react';
 import { useEditorStore } from '../store';
 import { ImageElement, NarrativeElement, DialogueElement, PAPER_SIZES } from '../types';
 import { Sparkles, Loader2 } from 'lucide-react';
+import { ComicStyle, COMIC_STYLE_NAMES } from '@kitsumy/types';
+
+const STYLES: ComicStyle[] = [
+  'american-classic',
+  'noir',
+  'manga',
+  'euro-bd',
+  'watercolor',
+  'retro',
+  'cyberpunk',
+  'whimsical',
+  'horror',
+  'minimalist'
+];
 
 const createId = () => Math.random().toString(36).slice(2, 11);
 
@@ -28,7 +42,8 @@ export const AIGeneratorPanel = () => {
   const { project, addCanvas, setActiveCanvas, updateCanvas, addElements, setPaperSize } = useEditorStore();
 
   const [prompt, setPrompt] = useState('');
-  const [maxPages, setMaxPages] = useState<number>(999); // Default: all pages
+  const [maxPages, setMaxPages] = useState<number>(1); // Default: 1 page for testing
+  const [style, setStyle] = useState<ComicStyle>('american-classic');
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState('');
@@ -59,6 +74,7 @@ export const AIGeneratorPanel = () => {
       const requestBody = {
         mode: 'learning',
         prompt: prompt.trim(),
+        style: style,
         maxPages: maxPages,
         userContext: {},
       };
@@ -326,6 +342,20 @@ export const AIGeneratorPanel = () => {
       </label>
 
       <div>
+        <label className="text-[#666] text-xs mb-1.5 block">Art Style</label>
+        <select
+          value={style}
+          onChange={(e) => setStyle(e.target.value as ComicStyle)}
+          className="w-full bg-[#252525] text-white text-sm px-3 py-2 rounded border border-[#333] focus:border-[#3b82f6] outline-none"
+          disabled={isGenerating}
+        >
+          {STYLES.map((s) => (
+            <option key={s} value={s}>{COMIC_STYLE_NAMES[s]}</option>
+          ))}
+        </select>
+      </div>
+
+      <div>
         <label className="text-[#666] text-xs mb-1.5 block">Pages</label>
         <select
           value={maxPages}
@@ -333,12 +363,12 @@ export const AIGeneratorPanel = () => {
           className="w-full bg-[#252525] text-white text-sm px-3 py-2 rounded border border-[#333] focus:border-[#3b82f6] outline-none"
           disabled={isGenerating}
         >
-          <option value={999}>All</option>
-          <option value={1}>1 page</option>
+          <option value={1}>1 page (test)</option>
           <option value={3}>3 pages</option>
           <option value={5}>5 pages</option>
           <option value={10}>10 pages</option>
           <option value={20}>20 pages</option>
+          <option value={999}>All</option>
         </select>
       </div>
 
