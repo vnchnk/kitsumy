@@ -639,7 +639,7 @@ class DeepHistoryPipeline implements Pipeline {
             } else if (IMAGE_PROVIDER === 'flux-dev') {
               // Generate with Flux 1.1 Dev (баланс якість/ціна)
               const output = await this.replicate.run(
-                "black-forest-labs/flux-dev",
+                "black-forest-labs/flux-dev:6e4a938f85952bdabcc15aa329178c4d681c52bf25a0342403287dc26944661d",
                 {
                   input: {
                     prompt: fullPrompt,
@@ -656,7 +656,7 @@ class DeepHistoryPipeline implements Pipeline {
             } else if (IMAGE_PROVIDER === 'flux-schnell') {
               // Generate with Flux Schnell (найшвидша/найдешевша)
               const output = await this.replicate.run(
-                "black-forest-labs/flux-schnell",
+                "black-forest-labs/flux-schnell:c846a69991daf4c0e5d016514849d14ee5b2e6846ce6b9d6f21369e564cfe51e",
                 {
                   input: {
                     prompt: fullPrompt,
