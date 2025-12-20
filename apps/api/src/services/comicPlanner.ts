@@ -527,9 +527,28 @@ ${charactersDescription}
 REQUIREMENTS:
 - Exactly ${chaptersCount} chapter(s)
 - EXACTLY ${maxPages} total pages
-- Layouts: 'single', 'two-horizontal', 'two-vertical', 'three-rows', 'grid-2x2', 'big-left', 'big-right', 'big-top', 'big-bottom', 'strip-3', 'manga-3', 'action'
 - Each page needs a scene with location, weather, timeOfDay, atmosphere
 - Make each page summary SPECIFIC and UNIQUE - avoid generic descriptions
+
+AVAILABLE LAYOUTS (choose based on panel dimensions):
+- 'single': 1 large panel (4:5 aspect) - full-page splash, establishing shots, dramatic moments
+- 'two-horizontal': 2 wide panels stacked (4:2.5 each) - dialogue exchanges, before/after, parallel events
+- 'two-vertical': 2 tall columns side by side (2:5 each) - vertical action, tall characters, parallel POVs
+- 'three-rows': 3 horizontal strips (4:1.6 each) - sequential action, time progression, montage
+- 'grid-2x2': 4 equal panels (2:2.5 each) - conversations, multi-angle shots, quick sequence
+- 'big-left': 1 large left (2.6:5) + 2 smaller right (1.3:2.5 each) - main action with reactions
+- 'big-right': 2 smaller left (1.3:2.5 each) + 1 large right (2.6:5) - build-up to reveal
+- 'big-top': 1 wide top (4:3.3) + 2 smaller bottom (2:1.6 each) - establishing + details
+- 'big-bottom': 2 smaller top (2:1.6 each) + 1 wide bottom (4:3.3) - details leading to climax
+- 'strip-3': 3 tall vertical columns (1.3:5 each) - vertical movement, tall scenes, manga style
+- 'manga-3': 1 top (4:2.5) + 2 bottom columns (2:2.5 each) - intro + dual reactions
+- 'action': 1 large left (2.6:3.7) + 2 stacked right (1.3:1.9 each) - dynamic action sequences
+
+LAYOUT SELECTION TIPS:
+- Wide panels (two-horizontal, big-top, big-bottom) = landscapes, crowds, horizontal movement
+- Tall panels (two-vertical, strip-3) = standing figures, vertical action, falling, towers
+- Big + small combos (big-left/right/top/bottom) = main focus with supporting details
+- Grid (grid-2x2, action) = fast pacing, multiple perspectives
 
 IMPORTANT - charactersInScene:
 - List ONLY characters who ACTUALLY APPEAR in this scene

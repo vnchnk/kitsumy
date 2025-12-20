@@ -768,17 +768,254 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   importJSON: (json) => {
     try {
-      const project = JSON.parse(json) as EditorProject;
-      saveProject(project);
-      set({ 
-        project, 
-        activeCanvasId: project.canvases?.[0]?.id || null,
-        selectedIds: [],
-        history: [{ canvases: project.canvases || [], timestamp: Date.now() }],
-        historyIndex: 0,
-      });
+      const parsed = JSON.parse(json);
+
+      // Check if this is a ComicPlan (has chapters) or EditorProject (has canvases)
+      if (parsed.chapters && !parsed.canvases) {
+        // Convert ComicPlan to EditorProject
+        const plan = parsed as {
+          id: string;
+          title: string;
+          chapters: Array<{
+            pages: Array<{
+              id: string;
+              pageNumber: number;
+              layout: string;
+              panels: Array<{
+                id: string;
+                position: number;
+                narrative: string | null;
+                dialogue: Array<{ characterId: string; text: string; bubblePosition?: string }>;
+              }>;
+            }>;
+          }>;
+          createdAt: string;
+        };
+
+        // Layout panel positions (from TemplatesPanel.tsx) - percentages
+        const EDGE_MARGIN = 1.5;
+        const PANEL_GAP = 2;
+
+        const calcPanels = (layout: { cols: number; rows: number; spans?: { col: number; row: number; colSpan: number; rowSpan: number }[] }) => {
+          const { cols, rows, spans } = layout;
+          const availableW = 100 - 2 * EDGE_MARGIN - (cols - 1) * PANEL_GAP;
+          const availableH = 100 - 2 * EDGE_MARGIN - (rows - 1) * PANEL_GAP;
+          const cellW = availableW / cols;
+          const cellH = availableH / rows;
+
+          if (spans) {
+            return spans.map(({ col, row, colSpan, rowSpan }) => ({
+              x: EDGE_MARGIN + col * (cellW + PANEL_GAP),
+              y: EDGE_MARGIN + row * (cellH + PANEL_GAP),
+              w: colSpan * cellW + (colSpan - 1) * PANEL_GAP,
+              h: rowSpan * cellH + (rowSpan - 1) * PANEL_GAP,
+            }));
+          }
+
+          const panels: { x: number; y: number; w: number; h: number }[] = [];
+          for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+              panels.push({
+                x: EDGE_MARGIN + c * (cellW + PANEL_GAP),
+                y: EDGE_MARGIN + r * (cellH + PANEL_GAP),
+                w: cellW,
+                h: cellH,
+              });
+            }
+          }
+          return panels;
+        };
+
+        // Layout templates matching TemplatesPanel.tsx
+        const LAYOUT_PANELS: Record<string, { x: number; y: number; w: number; h: number }[]> = {
+          'single': [{ x: EDGE_MARGIN, y: EDGE_MARGIN, w: 100 - 2 * EDGE_MARGIN, h: 100 - 2 * EDGE_MARGIN }],
+          'two-horizontal': calcPanels({ cols: 1, rows: 2 }),
+          'two-vertical': calcPanels({ cols: 2, rows: 1 }),
+          'three-rows': calcPanels({ cols: 1, rows: 3 }),
+          'grid-2x2': calcPanels({ cols: 2, rows: 2 }),
+          'big-left': calcPanels({ cols: 3, rows: 2, spans: [
+            { col: 0, row: 0, colSpan: 2, rowSpan: 2 },
+            { col: 2, row: 0, colSpan: 1, rowSpan: 1 },
+            { col: 2, row: 1, colSpan: 1, rowSpan: 1 },
+          ]}),
+          'big-right': calcPanels({ cols: 3, rows: 2, spans: [
+            { col: 0, row: 0, colSpan: 1, rowSpan: 1 },
+            { col: 0, row: 1, colSpan: 1, rowSpan: 1 },
+            { col: 1, row: 0, colSpan: 2, rowSpan: 2 },
+          ]}),
+          'big-top': calcPanels({ cols: 2, rows: 3, spans: [
+            { col: 0, row: 0, colSpan: 2, rowSpan: 2 },
+            { col: 0, row: 2, colSpan: 1, rowSpan: 1 },
+            { col: 1, row: 2, colSpan: 1, rowSpan: 1 },
+          ]}),
+          'big-bottom': calcPanels({ cols: 2, rows: 3, spans: [
+            { col: 0, row: 0, colSpan: 1, rowSpan: 1 },
+            { col: 1, row: 0, colSpan: 1, rowSpan: 1 },
+            { col: 0, row: 1, colSpan: 2, rowSpan: 2 },
+          ]}),
+          'strip-3': calcPanels({ cols: 3, rows: 1 }),
+          'manga-3': calcPanels({ cols: 2, rows: 3, spans: [
+            { col: 0, row: 0, colSpan: 1, rowSpan: 1 },
+            { col: 1, row: 0, colSpan: 1, rowSpan: 1 },
+            { col: 0, row: 1, colSpan: 2, rowSpan: 2 },
+          ]}),
+          'action': calcPanels({ cols: 3, rows: 5, spans: [
+            { col: 0, row: 0, colSpan: 2, rowSpan: 2 },
+            { col: 2, row: 0, colSpan: 1, rowSpan: 2 },
+            { col: 0, row: 2, colSpan: 3, rowSpan: 1 },
+            { col: 0, row: 3, colSpan: 1, rowSpan: 2 },
+            { col: 1, row: 3, colSpan: 2, rowSpan: 2 },
+          ]}),
+        };
+
+        // Flatten all pages from all chapters into canvases
+        const canvases: Canvas[] = [];
+        let pageOrder = 0;
+        const canvasW = PAPER_SIZES['A4'].width;
+        const canvasH = PAPER_SIZES['A4'].height;
+        const MARGIN = 20;
+        const GAP = 16;
+        const drawAreaW = canvasW - MARGIN * 2;
+        const drawAreaH = canvasH - MARGIN * 2;
+
+        for (const chapter of plan.chapters) {
+          for (const page of chapter.pages) {
+            const elements: CanvasElement[] = [];
+            let zIndex = 1;
+
+            // Get layout panels or fallback to grid
+            const layoutPanels = LAYOUT_PANELS[page.layout] || calcPanels({ cols: 2, rows: Math.ceil(page.panels.length / 2) });
+
+            for (const panel of page.panels) {
+              const layoutPanel = layoutPanels[panel.position - 1];
+              if (!layoutPanel) continue;
+
+              // Convert percentages to pixels
+              const x = Math.round(MARGIN + (layoutPanel.x / 100) * drawAreaW);
+              const y = Math.round(MARGIN + (layoutPanel.y / 100) * drawAreaH);
+              const w = Math.round((layoutPanel.w / 100) * drawAreaW - GAP);
+              const h = Math.round((layoutPanel.h / 100) * drawAreaH - GAP);
+
+              // Add image element (placeholder)
+              const imageElement: ImageElement = {
+                id: createId(),
+                type: 'image',
+                x,
+                y,
+                width: w,
+                height: h,
+                rotation: 0,
+                zIndex: zIndex++,
+                imageUrl: '',
+                borderWidth: 4,
+                borderColor: '#000000',
+                borderStyle: 'clean',
+                sepiaLevel: 0,
+                clipPreset: 'none',
+                customClipPath: null,
+                showOverlay: true,
+              };
+              elements.push(imageElement);
+
+              // Add narrative if exists
+              if (panel.narrative) {
+                const narrativeElement: NarrativeElement = {
+                  id: createId(),
+                  type: 'narrative',
+                  x: x + 10,
+                  y: y + 10,
+                  width: Math.min(250, w - 20),
+                  height: 60,
+                  rotation: -1,
+                  zIndex: zIndex++,
+                  text: panel.narrative,
+                  bgColor: '#fff133',
+                  textColor: '#000000',
+                  borderColor: '#000000',
+                  borderWidth: 2,
+                  fontSize: 12,
+                  fontFamily: 'comic',
+                  padding: 8,
+                };
+                elements.push(narrativeElement);
+              }
+
+              // Add dialogue bubbles
+              if (panel.dialogue && panel.dialogue.length > 0) {
+                let dialogueY = y + h - 100;
+                for (const dlg of panel.dialogue) {
+                  const isLeft = dlg.bubblePosition?.includes('left') ?? true;
+                  const dialogueElement: DialogueElement = {
+                    id: createId(),
+                    type: 'dialogue',
+                    x: isLeft ? x + 15 : x + w - 175,
+                    y: dialogueY,
+                    width: 160,
+                    height: 80,
+                    rotation: 0,
+                    zIndex: zIndex++,
+                    speaker: dlg.characterId.toUpperCase(),
+                    text: dlg.text,
+                    bgColor: '#ffffff',
+                    textColor: '#000000',
+                    borderColor: '#000000',
+                    borderWidth: 2,
+                    fontSize: 11,
+                    tailPosition: isLeft ? 'bottom-left' : 'bottom-right',
+                    bubbleStyle: 'round',
+                  };
+                  elements.push(dialogueElement);
+                  dialogueY -= 90;
+                }
+              }
+            }
+
+            const canvas: Canvas = {
+              id: page.id,
+              name: `Page ${page.pageNumber}`,
+              elements,
+              width: canvasW,
+              height: canvasH,
+              backgroundColor: '#ffffff',
+              order: pageOrder++,
+            };
+            canvases.push(canvas);
+          }
+        }
+
+        const project: EditorProject = {
+          id: plan.id,
+          title: plan.title,
+          canvases,
+          paperSize: 'A4',
+          layout: 'horizontal',
+          borderStyle: 'clean',
+          createdAt: plan.createdAt,
+          updatedAt: new Date().toISOString(),
+        };
+
+        saveProject(project);
+        set({
+          project,
+          activeCanvasId: project.canvases[0]?.id || null,
+          selectedIds: [],
+          history: [{ canvases: project.canvases, timestamp: Date.now() }],
+          historyIndex: 0,
+        });
+      } else {
+        // Standard EditorProject format
+        const project = parsed as EditorProject;
+        saveProject(project);
+        set({
+          project,
+          activeCanvasId: project.canvases?.[0]?.id || null,
+          selectedIds: [],
+          history: [{ canvases: project.canvases || [], timestamp: Date.now() }],
+          historyIndex: 0,
+        });
+      }
     } catch (e) {
-      console.error('Invalid JSON');
+      console.error('Invalid JSON:', e);
     }
   },
 }));
