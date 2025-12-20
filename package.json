@@ -6,8 +6,9 @@
     "packages/*"
   ],
   "scripts": {
-    "start": "concurrently -n API,WEB -c cyan.bold,magenta.bold \"npm run dev -w @kitsumy/api\" \"npm run dev -w @kitsumy/web\"",
-    "dev": "concurrently -n API,WEB -c cyan.bold,magenta.bold \"npm run dev -w @kitsumy/api\" \"npm run dev -w @kitsumy/web\"",
+    "start": "concurrently --raw \"npm run dev -w @kitsumy/api\" \"npm run dev -w @kitsumy/web\"",
+    "dev": "concurrently --raw \"npm run dev -w @kitsumy/api\" \"npm run dev -w @kitsumy/web\"",
+    "dev:api": "npm run dev -w @kitsumy/api",
     "build": "npm run build --workspaces --if-present"
   },
   "devDependencies": {
