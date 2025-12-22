@@ -244,3 +244,4 @@ export const PolygonEditor = ({ points, onChange, onReset }: Props) => {
   );
 };
 
+

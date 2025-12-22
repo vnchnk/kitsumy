@@ -551,16 +551,17 @@ const DialogueProperties = ({
 
     <div className="space-y-2">
       <label className="text-[#888] text-sm">Bubble Style</label>
-      <div className="grid grid-cols-4 gap-2">
-        {(['round', 'cloud', 'square', 'shout'] as const).map((s) => (
+      <div className="grid grid-cols-5 gap-1">
+        {(['round', 'cloud', 'square', 'shout', 'whisper'] as const).map((s) => (
           <button
             key={s}
             onClick={() => update({ bubbleStyle: s })}
-            className={`py-2 text-xs capitalize rounded border-2 transition-colors ${
+            className={`py-1.5 text-[10px] capitalize rounded border-2 transition-colors ${
               element.bubbleStyle === s
                 ? 'border-[#3b82f6] bg-[#3b82f6]/20 text-white'
                 : 'border-[#333] text-[#888] hover:border-[#555]'
             }`}
+            title={s === 'cloud' ? 'Thought bubble' : s === 'shout' ? 'Exclamation' : s === 'whisper' ? 'Whisper/quiet' : s}
           >
             {s}
           </button>
@@ -570,18 +571,47 @@ const DialogueProperties = ({
 
     <div className="space-y-2">
       <label className="text-[#888] text-sm">Tail Position</label>
-      <div className="grid grid-cols-3 gap-2">
-        {(['bottom-left', 'bottom-right', 'none'] as const).map((t) => (
+      <div className="grid grid-cols-4 gap-1">
+        {/* Top row */}
+        {(['top-left', 'top-center', 'top-right', 'none'] as const).map((t) => (
           <button
             key={t}
             onClick={() => update({ tailPosition: t })}
-            className={`py-2 text-xs capitalize rounded border-2 transition-colors ${
+            className={`py-1 text-[10px] rounded border-2 transition-colors ${
               element.tailPosition === t
                 ? 'border-[#3b82f6] bg-[#3b82f6]/20 text-white'
                 : 'border-[#333] text-[#888] hover:border-[#555]'
             }`}
           >
-            {t === 'bottom-left' ? 'Left' : t === 'bottom-right' ? 'Right' : 'None'}
+            {t === 'none' ? '✕' : t === 'top-left' ? '↖' : t === 'top-center' ? '↑' : '↗'}
+          </button>
+        ))}
+        {/* Side positions */}
+        {(['left-top', 'left-center', 'right-center', 'right-top'] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => update({ tailPosition: t })}
+            className={`py-1 text-[10px] rounded border-2 transition-colors ${
+              element.tailPosition === t
+                ? 'border-[#3b82f6] bg-[#3b82f6]/20 text-white'
+                : 'border-[#333] text-[#888] hover:border-[#555]'
+            }`}
+          >
+            {t === 'left-top' ? '↰' : t === 'left-center' ? '←' : t === 'right-center' ? '→' : '↱'}
+          </button>
+        ))}
+        {/* Bottom row */}
+        {(['bottom-left', 'bottom-center', 'bottom-right', 'left-bottom'] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => update({ tailPosition: t })}
+            className={`py-1 text-[10px] rounded border-2 transition-colors ${
+              element.tailPosition === t
+                ? 'border-[#3b82f6] bg-[#3b82f6]/20 text-white'
+                : 'border-[#333] text-[#888] hover:border-[#555]'
+            }`}
+          >
+            {t === 'bottom-left' ? '↙' : t === 'bottom-center' ? '↓' : t === 'bottom-right' ? '↘' : '↲'}
           </button>
         ))}
       </div>

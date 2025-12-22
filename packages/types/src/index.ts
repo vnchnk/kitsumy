@@ -50,6 +50,106 @@ export const COMIC_STYLE_NAMES: Record<ComicStyle, string> = {
   'soviet-poster': 'Soviet Poster'
 };
 
+// Промпти для Flux image generation
+// prefix - на початку промпту, suffix - в кінці (Flux краще сприймає стиль на початку і в кінці)
+export interface StylePrompt {
+  prefix: string;
+  suffix: string;
+}
+
+export const COMIC_STYLE_PROMPTS: Record<ComicStyle, StylePrompt> = {
+  'american-classic': {
+    prefix: 'comic book panel illustration, professional comic art,',
+    suffix: 'Marvel DC comic book style, bold ink lines, dynamic composition, vibrant saturated colors, halftone dots texture, classic American comic aesthetic'
+  },
+  'noir': {
+    prefix: 'noir comic book panel, high contrast black and white illustration,',
+    suffix: 'Frank Miller Sin City style, dramatic chiaroscuro lighting, deep shadows, stark contrasts, noir comic art'
+  },
+  'manga': {
+    prefix: 'manga panel illustration, Japanese comic art style,',
+    suffix: 'clean manga linework, expressive anime eyes, screentone shading, dynamic speed lines, professional manga aesthetic'
+  },
+  'euro-bd': {
+    prefix: 'European bande dessinée panel, ligne claire illustration,',
+    suffix: 'Tintin Moebius inspired, clean precise lines, detailed backgrounds, European comic book style'
+  },
+  'watercolor': {
+    prefix: 'watercolor comic panel, painted illustration style,',
+    suffix: 'soft watercolor washes, flowing colors, painterly comic art, artistic brushwork'
+  },
+  'retro': {
+    prefix: 'vintage 1950s comic panel, retro illustration,',
+    suffix: 'classic Americana style, warm nostalgic palette, vintage comic book aesthetic'
+  },
+  'cyberpunk': {
+    prefix: 'cyberpunk comic panel, neon-lit sci-fi illustration,',
+    suffix: 'futuristic cyberpunk style, neon glows, high tech aesthetic, dystopian atmosphere'
+  },
+  'whimsical': {
+    prefix: 'children book illustration panel, whimsical art style,',
+    suffix: 'soft friendly colors, storybook illustration, charming whimsical aesthetic'
+  },
+  'horror': {
+    prefix: 'horror comic panel, dark gothic illustration,',
+    suffix: 'eerie atmosphere, creepy details, dark fantasy horror comic style'
+  },
+  'minimalist': {
+    prefix: 'minimalist comic panel, clean simple illustration,',
+    suffix: 'limited color palette, negative space, modern minimalist comic design'
+  },
+  'ukiyo-e': {
+    prefix: 'ukiyo-e style panel, Japanese woodblock print illustration,',
+    suffix: 'flat colors, bold outlines, traditional Japanese art aesthetic'
+  },
+  'pop-art': {
+    prefix: 'pop art comic panel, Lichtenstein style illustration,',
+    suffix: 'Ben-Day dots, bold primary colors, pop art comic aesthetic'
+  },
+  'sketch': {
+    prefix: 'pencil sketch comic panel, storyboard style illustration,',
+    suffix: 'rough pencil lines, crosshatching, hand-drawn sketch aesthetic'
+  },
+  'cel-shaded': {
+    prefix: 'cel-shaded comic panel, 3D comic style illustration,',
+    suffix: 'Borderlands Spider-Verse style, bold outlines, flat cel shading'
+  },
+  'pulp': {
+    prefix: '1930s pulp fiction comic panel, vintage adventure illustration,',
+    suffix: 'dramatic pulp art lighting, action-packed, classic pulp aesthetic'
+  },
+  'woodcut': {
+    prefix: 'woodcut print style panel, medieval illustration,',
+    suffix: 'bold black lines, textured woodcut print aesthetic'
+  },
+  'art-nouveau': {
+    prefix: 'art nouveau style panel, Alphonse Mucha inspired illustration,',
+    suffix: 'decorative borders, flowing organic lines, art nouveau aesthetic'
+  },
+  'graffiti': {
+    prefix: 'street art comic panel, graffiti style illustration,',
+    suffix: 'spray paint aesthetic, urban bold colors, edgy street art style'
+  },
+  'chibi': {
+    prefix: 'chibi style comic panel, super-deformed cute illustration,',
+    suffix: 'big heads small bodies, kawaii chibi aesthetic'
+  },
+  'soviet-poster': {
+    prefix: 'Soviet propaganda poster style panel, constructivist illustration,',
+    suffix: 'bold red and black, heroic poses, Soviet poster aesthetic'
+  },
+};
+
+export const COMIC_SETTING_PROMPTS: Record<ComicSetting, string> = {
+  'realistic': 'realistic setting, contemporary, grounded in reality',
+  'sci-fi': 'science fiction, futuristic technology, space, advanced civilization',
+  'cyberpunk': 'cyberpunk setting, dystopian future, neon, cybernetic implants, megacities',
+  'fantasy': 'fantasy setting, magic, medieval, mythical creatures, enchanted',
+  'steampunk': 'steampunk setting, Victorian era, brass gears, steam-powered machinery',
+  'supernatural': 'supernatural setting, ghosts, vampires, demons, paranormal',
+  'post-apocalyptic': 'post-apocalyptic setting, wasteland, ruins, survival, desolation',
+};
+
 export interface ComicPanel {
   id: string;
   imageUrl: string;
@@ -263,14 +363,39 @@ export interface ComicCharacter {
   seed?: number;            // Seed для консистентності
 }
 
-// Позиція bubble для діалогу
-export type BubblePosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'top-center' | 'bottom-center';
+// ========================================
+// SIMPLE TEXT SYSTEM
+// ========================================
 
-// Діалог
+// 9 можливих позицій для розміщення тексту в панелі (legacy)
+export type TextPlacement =
+  | 'top-left' | 'top-center' | 'top-right'
+  | 'middle-left' | 'middle-center' | 'middle-right'
+  | 'bottom-left' | 'bottom-center' | 'bottom-right';
+
+// Напрямок хвостика бабла
+export type TailDirection =
+  | 'top-left' | 'top-center' | 'top-right'
+  | 'bottom-left' | 'bottom-center' | 'bottom-right'
+  | 'left-top' | 'left-center' | 'left-bottom'
+  | 'right-top' | 'right-center' | 'right-bottom'
+  | 'none';
+
+// Точне розміщення в % (0-100)
+export interface PrecisePlacement {
+  x: number;              // 0-100% від лівого краю
+  y: number;              // 0-100% від верхнього краю
+  width: number;          // Ширина в % панелі
+  height: number;         // Висота в % панелі
+  tailDirection: TailDirection;
+}
+
+// Діалог - простий, від LLM
 export interface PanelDialogue {
-  characterId: string;      // ID персонажа
-  text: string;
-  bubblePosition?: BubblePosition; // Позиція bubble на панелі
+  characterId: string;      // ID персонажа (char-1, anon-editor)
+  text: string;             // Текст діалогу
+  placement?: TextPlacement; // Де розмістити (legacy, default: auto)
+  precisePlacement?: PrecisePlacement; // Точні координати від Vision AI
 }
 
 // Структурована камера (flexible strings for LLM creativity)
@@ -304,16 +429,22 @@ export interface PanelPlan {
   // Камера
   camera: CameraSetup;
 
-  // Текст
-  dialogue: PanelDialogue[];
-  narrative: string | null; // Текст наратора
-  sfx: string | null;       // "BOOM!", "CRASH!"
+  // Текст - простий формат
+  dialogue: PanelDialogue[];        // Діалоги з placement hint
+  narrative: string | null;         // Текст наратора
+  narrativePlacement?: TextPlacement; // Де розмістити наратив (legacy, default: top-left)
+  narrativePrecisePlacement?: PrecisePlacement; // Точні координати для наративу
+  sfx: string | null;               // "BOOM!", "CRASH!"
+  sfxPrecisePlacement?: PrecisePlacement; // Точні координати для SFX
 
   // Image generation (for Flux)
   aspectRatio: AspectRatio; // From layout slot, e.g. "16:9", "1:1", "2:3"
   imagePrompt: string;      // Ready-to-use prompt for Flux image generation
   negativePrompt?: string;  // What to avoid in the image
   characterSeeds?: Record<string, number>; // { "char-1": 350944, "char-2": 496086 } for face consistency
+
+  // Generated image
+  imageUrl?: string;        // URL of generated image (filled by generate-v2)
 }
 
 // Сцена сторінки (спільна локація)

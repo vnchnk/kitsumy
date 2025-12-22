@@ -11,6 +11,8 @@ import {
   PaperSize,
   CanvasLayout,
   BorderStyle,
+  TailPosition,
+  BubbleStyle,
   PAPER_SIZES,
 } from './types';
 
@@ -776,6 +778,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         const plan = parsed as {
           id: string;
           title: string;
+          style?: { visual: string; setting?: string };
+          characters?: Array<{ id: string; name: string }>;
           chapters: Array<{
             pages: Array<{
               id: string;
@@ -785,12 +789,134 @@ export const useEditorStore = create<EditorState>((set, get) => ({
                 id: string;
                 position: number;
                 narrative: string | null;
-                dialogue: Array<{ characterId: string; text: string; bubblePosition?: string }>;
+                dialogue: Array<{
+                  characterId: string;
+                  text: string;
+                  bubblePosition?: string;
+                  placement?: string;
+                  precisePlacement?: {
+                    x: number;
+                    y: number;
+                    width: number;
+                    height: number;
+                    tailDirection: string;
+                  };
+                }>;
+                narrativePlacement?: string;
+                narrativePrecisePlacement?: {
+                  x: number;
+                  y: number;
+                  width: number;
+                  height: number;
+                  tailDirection: string;
+                };
+                imageUrl?: string;
               }>;
             }>;
           }>;
           createdAt: string;
         };
+
+        // Build character name map for speaker display
+        const characterNames = new Map<string, string>();
+        if (plan.characters) {
+          for (const char of plan.characters) {
+            characterNames.set(char.id, char.name);
+          }
+        }
+
+        // Style presets for different comic visual styles
+        type TextStyles = {
+          narrative: { bgColor: string; textColor: string; borderColor: string; fontFamily: 'serif' | 'sans' | 'comic' };
+          dialogue: { bgColor: string; textColor: string; borderColor: string; bubbleStyle: 'round' | 'cloud' | 'square' | 'shout' };
+        };
+
+        const STYLE_PRESETS: Record<string, TextStyles> = {
+          'noir': {
+            narrative: { bgColor: '#1a1a1a', textColor: '#e0e0e0', borderColor: '#444444', fontFamily: 'serif' },
+            dialogue: { bgColor: '#ffffff', textColor: '#1a1a1a', borderColor: '#000000', bubbleStyle: 'round' },
+          },
+          'manga': {
+            narrative: { bgColor: '#ffffff', textColor: '#1a1a1a', borderColor: '#333333', fontFamily: 'sans' },
+            dialogue: { bgColor: '#ffffff', textColor: '#1a1a1a', borderColor: '#1a1a1a', bubbleStyle: 'round' },
+          },
+          'american-classic': {
+            narrative: { bgColor: '#fef9e7', textColor: '#1a1a1a', borderColor: '#d4a853', fontFamily: 'comic' },
+            dialogue: { bgColor: '#fffef0', textColor: '#1a1a1a', borderColor: '#333333', bubbleStyle: 'round' },
+          },
+          'euro-bd': {
+            narrative: { bgColor: '#f5f0e6', textColor: '#2c2c2c', borderColor: '#8b7355', fontFamily: 'serif' },
+            dialogue: { bgColor: '#fefefe', textColor: '#2c2c2c', borderColor: '#4a4a4a', bubbleStyle: 'round' },
+          },
+          'cyberpunk': {
+            narrative: { bgColor: '#0d0d0d', textColor: '#00ffff', borderColor: '#ff00ff', fontFamily: 'sans' },
+            dialogue: { bgColor: '#1a0a2e', textColor: '#00ff00', borderColor: '#ff00ff', bubbleStyle: 'square' },
+          },
+          'horror': {
+            narrative: { bgColor: '#1a0a0a', textColor: '#cc0000', borderColor: '#440000', fontFamily: 'serif' },
+            dialogue: { bgColor: '#f0e6e6', textColor: '#330000', borderColor: '#660000', bubbleStyle: 'cloud' },
+          },
+          'watercolor': {
+            narrative: { bgColor: '#f8f4e8', textColor: '#3d3d3d', borderColor: '#a89f8c', fontFamily: 'serif' },
+            dialogue: { bgColor: '#fffef8', textColor: '#4a4a4a', borderColor: '#b0a090', bubbleStyle: 'cloud' },
+          },
+          'retro': {
+            narrative: { bgColor: '#fff4d4', textColor: '#4a3728', borderColor: '#c49a6c', fontFamily: 'comic' },
+            dialogue: { bgColor: '#fffff0', textColor: '#3d3d3d', borderColor: '#8b7355', bubbleStyle: 'round' },
+          },
+          'pop-art': {
+            narrative: { bgColor: '#ffff00', textColor: '#000000', borderColor: '#ff0000', fontFamily: 'comic' },
+            dialogue: { bgColor: '#ffffff', textColor: '#000000', borderColor: '#0000ff', bubbleStyle: 'shout' },
+          },
+          'sketch': {
+            narrative: { bgColor: '#fafafa', textColor: '#333333', borderColor: '#999999', fontFamily: 'sans' },
+            dialogue: { bgColor: '#ffffff', textColor: '#444444', borderColor: '#888888', bubbleStyle: 'round' },
+          },
+          'cel-shaded': {
+            narrative: { bgColor: '#2d2d44', textColor: '#ffffff', borderColor: '#5858a8', fontFamily: 'sans' },
+            dialogue: { bgColor: '#ffffff', textColor: '#1a1a2e', borderColor: '#4a4a8a', bubbleStyle: 'square' },
+          },
+          'pulp': {
+            narrative: { bgColor: '#4a3728', textColor: '#f5deb3', borderColor: '#8b4513', fontFamily: 'serif' },
+            dialogue: { bgColor: '#fff8dc', textColor: '#4a3728', borderColor: '#8b4513', bubbleStyle: 'round' },
+          },
+          'soviet-poster': {
+            narrative: { bgColor: '#cc0000', textColor: '#ffffff', borderColor: '#8b0000', fontFamily: 'sans' },
+            dialogue: { bgColor: '#fffef0', textColor: '#1a1a1a', borderColor: '#cc0000', bubbleStyle: 'square' },
+          },
+          'whimsical': {
+            narrative: { bgColor: '#e6f3ff', textColor: '#2e5090', borderColor: '#7eb3e0', fontFamily: 'comic' },
+            dialogue: { bgColor: '#fff0f5', textColor: '#4a4a4a', borderColor: '#ffb6c1', bubbleStyle: 'cloud' },
+          },
+          'graffiti': {
+            narrative: { bgColor: '#1a1a1a', textColor: '#ff6600', borderColor: '#00cc00', fontFamily: 'sans' },
+            dialogue: { bgColor: '#ffffff', textColor: '#1a1a1a', borderColor: '#ff00ff', bubbleStyle: 'shout' },
+          },
+          'ukiyo-e': {
+            narrative: { bgColor: '#f5e6d3', textColor: '#2c1810', borderColor: '#8b4513', fontFamily: 'serif' },
+            dialogue: { bgColor: '#fffef5', textColor: '#2c1810', borderColor: '#a0522d', bubbleStyle: 'round' },
+          },
+          'art-nouveau': {
+            narrative: { bgColor: '#f0e6d8', textColor: '#4a3728', borderColor: '#8b7355', fontFamily: 'serif' },
+            dialogue: { bgColor: '#fffef8', textColor: '#3d3d3d', borderColor: '#9a8a6a', bubbleStyle: 'cloud' },
+          },
+          'minimalist': {
+            narrative: { bgColor: '#f5f5f5', textColor: '#1a1a1a', borderColor: '#cccccc', fontFamily: 'sans' },
+            dialogue: { bgColor: '#ffffff', textColor: '#1a1a1a', borderColor: '#e0e0e0', bubbleStyle: 'round' },
+          },
+          'woodcut': {
+            narrative: { bgColor: '#2c1810', textColor: '#f5deb3', borderColor: '#4a3728', fontFamily: 'serif' },
+            dialogue: { bgColor: '#f5e6d3', textColor: '#2c1810', borderColor: '#4a3728', bubbleStyle: 'square' },
+          },
+          'chibi': {
+            narrative: { bgColor: '#fff0f5', textColor: '#4a4a4a', borderColor: '#ffb6c1', fontFamily: 'comic' },
+            dialogue: { bgColor: '#ffffff', textColor: '#333333', borderColor: '#ff69b4', bubbleStyle: 'cloud' },
+          },
+        };
+
+        // Get style preset based on comic visual style
+        const visualStyle = plan.style?.visual || 'american-classic';
+        const stylePreset = STYLE_PRESETS[visualStyle] || STYLE_PRESETS['american-classic'];
 
         // Layout panel positions (from TemplatesPanel.tsx) - percentages
         const EDGE_MARGIN = 1.5;
@@ -896,7 +1022,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
               const w = Math.round((layoutPanel.w / 100) * drawAreaW - GAP);
               const h = Math.round((layoutPanel.h / 100) * drawAreaH - GAP);
 
-              // Add image element (placeholder)
+              // Add image element (with generated image or placeholder)
               const imageElement: ImageElement = {
                 id: createId(),
                 type: 'image',
@@ -906,7 +1032,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
                 height: h,
                 rotation: 0,
                 zIndex: zIndex++,
-                imageUrl: '',
+                imageUrl: panel.imageUrl || '',
                 borderWidth: 4,
                 borderColor: '#000000',
                 borderStyle: 'clean',
@@ -917,55 +1043,367 @@ export const useEditorStore = create<EditorState>((set, get) => ({
               };
               elements.push(imageElement);
 
-              // Add narrative if exists
+              // ========================================
+              // TEXT BLOCKS - Collision-aware placement
+              // ========================================
+
+              // Track placed text blocks for collision detection
+              const placedBlocks: Array<{ x: number; y: number; w: number; h: number }> = [];
+
+              // Check if a new block overlaps with any existing block
+              const hasCollision = (nx: number, ny: number, nw: number, nh: number): boolean => {
+                const padding = 4; // Min gap between blocks
+                for (const block of placedBlocks) {
+                  if (!(nx + nw + padding < block.x ||
+                        nx > block.x + block.w + padding ||
+                        ny + nh + padding < block.y ||
+                        ny > block.y + block.h + padding)) {
+                    return true;
+                  }
+                }
+                return false;
+              };
+
+              // Convert TextPlacement to pixel coordinates within panel
+              const placementToPixels = (
+                placement: string,
+                blockW: number,
+                blockH: number
+              ): { x: number; y: number; isTop: boolean; isLeft: boolean } => {
+                const pad = 8;
+                const parts = placement.split('-');
+                const row = parts[0] as 'top' | 'middle' | 'bottom';
+                const col = parts[1] as 'left' | 'center' | 'right';
+
+                let px: number;
+                let py: number;
+                let isLeft = true;
+                let isTop = true;
+
+                switch (col) {
+                  case 'left':
+                    px = x + pad;
+                    isLeft = true;
+                    break;
+                  case 'center':
+                    px = x + Math.round((w - blockW) / 2);
+                    isLeft = true; // for tail calculation
+                    break;
+                  case 'right':
+                    px = x + w - blockW - pad;
+                    isLeft = false;
+                    break;
+                  default:
+                    px = x + pad;
+                }
+
+                switch (row) {
+                  case 'top':
+                    py = y + pad;
+                    isTop = true;
+                    break;
+                  case 'middle':
+                    py = y + Math.round((h - blockH) / 2);
+                    isTop = true;
+                    break;
+                  case 'bottom':
+                    py = y + h - blockH - pad;
+                    isTop = false;
+                    break;
+                  default:
+                    py = y + pad;
+                }
+
+                return { x: px, y: py, isTop, isLeft };
+              };
+
+              // Find non-overlapping position, trying multiple placements
+              const findNonOverlappingPosition = (
+                blockW: number,
+                blockH: number,
+                preferredPositions: Array<{ x: number; y: number; isTop?: boolean; isLeft?: boolean }>
+              ): { x: number; y: number; isTop: boolean; isLeft: boolean } => {
+                // Try each preferred position
+                for (const pos of preferredPositions) {
+                  if (!hasCollision(pos.x, pos.y, blockW, blockH)) {
+                    return { x: pos.x, y: pos.y, isTop: pos.isTop ?? true, isLeft: pos.isLeft ?? true };
+                  }
+                }
+                // If all overlap, return first position anyway
+                const first = preferredPositions[0];
+                return { x: first.x, y: first.y, isTop: first.isTop ?? true, isLeft: first.isLeft ?? true };
+              };
+
               if (panel.narrative) {
-                const narrativeElement: NarrativeElement = {
+                const text = panel.narrative;
+
+                // Auto-size: estimate width/height based on text
+                const maxWidth = Math.min(180, w * 0.45);
+                const charWidth = 7;
+                const lineHeight = 16;
+                const padding = 16;
+
+                const charsPerLine = Math.floor((maxWidth - padding * 2) / charWidth);
+                const lines = Math.ceil(text.length / charsPerLine);
+
+                const blockW = Math.min(maxWidth, text.length * charWidth + padding * 2);
+                const blockH = lines * lineHeight + padding;
+
+                // Check if LLM provided placement
+                let px: number;
+                let py: number;
+
+                if (panel.narrativePlacement) {
+                  // Use LLM-provided placement
+                  const pos = placementToPixels(panel.narrativePlacement, blockW, blockH);
+                  if (!hasCollision(pos.x, pos.y, blockW, blockH)) {
+                    px = pos.x;
+                    py = pos.y;
+                  } else {
+                    // LLM placement collides, use fallback
+                    const pad = 8;
+                    const candidatePositions = [
+                      { x: x + pad, y: y + pad },
+                      { x: x + w - blockW - pad, y: y + pad },
+                      { x: x + Math.round((w - blockW) / 2), y: y + pad },
+                      { x: x + pad, y: y + h - blockH - pad },
+                    ];
+                    const found = findNonOverlappingPosition(blockW, blockH, candidatePositions);
+                    px = found.x;
+                    py = found.y;
+                  }
+                } else {
+                  // No LLM placement, use collision detection
+                  const pad = 8;
+                  const candidatePositions = [
+                    { x: x + pad, y: y + pad },
+                    { x: x + w - blockW - pad, y: y + pad },
+                    { x: x + Math.round((w - blockW) / 2), y: y + pad },
+                    { x: x + pad, y: y + h - blockH - pad },
+                  ];
+                  const found = findNonOverlappingPosition(blockW, blockH, candidatePositions);
+                  px = found.x;
+                  py = found.y;
+                }
+
+                placedBlocks.push({ x: px, y: py, w: blockW, h: blockH });
+
+                elements.push({
                   id: createId(),
                   type: 'narrative',
-                  x: x + 10,
-                  y: y + 10,
-                  width: Math.min(250, w - 20),
-                  height: 60,
-                  rotation: -1,
+                  x: px,
+                  y: py,
+                  width: blockW,
+                  height: blockH,
+                  rotation: 0,
                   zIndex: zIndex++,
-                  text: panel.narrative,
-                  bgColor: '#fff133',
-                  textColor: '#000000',
-                  borderColor: '#000000',
+                  text: text,
+                  bgColor: stylePreset.narrative.bgColor,
+                  textColor: stylePreset.narrative.textColor,
+                  borderColor: stylePreset.narrative.borderColor,
                   borderWidth: 2,
                   fontSize: 12,
-                  fontFamily: 'comic',
-                  padding: 8,
-                };
-                elements.push(narrativeElement);
+                  fontFamily: stylePreset.narrative.fontFamily,
+                  padding: 10,
+                } as NarrativeElement);
               }
 
-              // Add dialogue bubbles
+              // Add dialogues if exist
               if (panel.dialogue && panel.dialogue.length > 0) {
-                let dialogueY = y + h - 100;
-                for (const dlg of panel.dialogue) {
-                  const isLeft = dlg.bubblePosition?.includes('left') ?? true;
-                  const dialogueElement: DialogueElement = {
+                // Seeded random for consistent but varied placement
+                const panelSeed = panel.position * 1000 + pageOrder * 100;
+                const seededRandom = (i: number) => {
+                  const sx = Math.sin(panelSeed + i * 127) * 10000;
+                  return sx - Math.floor(sx);
+                };
+
+                // Bubble styles vary based on text content
+                const getBubbleStyle = (text: string, di: number): BubbleStyle => {
+                  // Shouting (exclamation marks, short text)
+                  if (text.includes('!') && text.length < 30) return 'shout';
+                  // Thinking/internal monologue (ellipsis or parentheses)
+                  if (text.includes('...') || text.startsWith('(') || text.includes('думає')) return 'cloud';
+                  // Whispering (quiet text)
+                  if (text.toLowerCase().includes('шепоч') || text.toLowerCase().includes('тихо')) return 'whisper';
+                  // Default: round or square
+                  return seededRandom(di + 100) > 0.6 ? 'square' : 'round';
+                };
+
+                for (let di = 0; di < panel.dialogue.length; di++) {
+                  const dlg = panel.dialogue[di];
+                  const text = dlg.text;
+                  const speaker = characterNames.get(dlg.characterId) || '';
+
+                  // Auto-size dialogue bubble
+                  const maxWidth = Math.min(160, w * 0.45);
+                  const charWidth = 7;
+                  const lineHeight = 16;
+                  const padding = 12;
+                  const speakerHeight = 14;
+
+                  const charsPerLine = Math.floor((maxWidth - padding * 2) / charWidth);
+                  const lines = Math.ceil(text.length / charsPerLine);
+
+                  const blockW = Math.min(maxWidth, Math.max(60, text.length * charWidth / lines + padding * 2));
+                  const blockH = lines * lineHeight + padding + speakerHeight;
+
+                  const pad = 8;
+                  let chosen: { x: number; y: number; isTop: boolean; isLeft: boolean };
+                  let aiTailDirection: TailPosition | null = null;
+                  let aiWidth: number | null = null;
+                  let aiHeight: number | null = null;
+
+                  // Priority 1: Use precise AI placement if available
+                  if (dlg.precisePlacement) {
+                    const pp = dlg.precisePlacement;
+                    // Convert percentage to pixels
+                    const preciseX = x + Math.round((pp.x / 100) * w);
+                    const preciseY = y + Math.round((pp.y / 100) * h);
+                    aiWidth = Math.round((pp.width / 100) * w);
+                    aiHeight = Math.round((pp.height / 100) * h);
+                    aiTailDirection = pp.tailDirection as TailPosition;
+
+                    if (!hasCollision(preciseX, preciseY, aiWidth, aiHeight)) {
+                      chosen = {
+                        x: preciseX,
+                        y: preciseY,
+                        isTop: pp.y < 50,
+                        isLeft: pp.x < 50,
+                      };
+                    } else {
+                      // AI placement collides, use fallback
+                      const patterns = [
+                        { isTop: true, isLeft: true },
+                        { isTop: false, isLeft: false },
+                        { isTop: true, isLeft: false },
+                        { isTop: false, isLeft: true },
+                      ];
+                      const candidatePositions = patterns.map(p => ({
+                        x: p.isLeft ? x + pad : x + w - aiWidth! - pad,
+                        y: p.isTop ? y + pad : y + h - aiHeight! - pad,
+                        isTop: p.isTop,
+                        isLeft: p.isLeft,
+                      }));
+                      chosen = findNonOverlappingPosition(aiWidth, aiHeight, candidatePositions);
+                    }
+                  }
+                  // Priority 2: Use legacy 9-zone placement
+                  else if (dlg.placement) {
+                    // Use LLM-provided placement
+                    const pos = placementToPixels(dlg.placement, blockW, blockH);
+                    if (!hasCollision(pos.x, pos.y, blockW, blockH)) {
+                      chosen = pos;
+                    } else {
+                      // LLM placement collides, find fallback
+                      const patterns = [
+                        { isTop: true, isLeft: true },
+                        { isTop: false, isLeft: false },
+                        { isTop: true, isLeft: false },
+                        { isTop: false, isLeft: true },
+                      ];
+                      const candidatePositions = patterns.map(p => ({
+                        x: p.isLeft ? x + pad : x + w - blockW - pad,
+                        y: p.isTop ? y + pad : y + h - blockH - pad,
+                        isTop: p.isTop,
+                        isLeft: p.isLeft,
+                      }));
+                      chosen = findNonOverlappingPosition(blockW, blockH, candidatePositions);
+                    }
+                  }
+                  // Priority 3: Fallback to collision-based placement
+                  else {
+                    // No LLM placement, use collision detection with pattern-based order
+                    const patterns = [
+                      { isTop: true, isLeft: true },   // 0: top-left
+                      { isTop: false, isLeft: false }, // 1: bottom-right
+                      { isTop: true, isLeft: false },  // 2: top-right
+                      { isTop: false, isLeft: true },  // 3: bottom-left
+                    ];
+                    const pattern = patterns[di % patterns.length];
+
+                    const candidatePositions: Array<{ x: number; y: number; isTop: boolean; isLeft: boolean }> = [];
+
+                    // Add primary position first
+                    candidatePositions.push({
+                      x: pattern.isLeft ? x + pad : x + w - blockW - pad,
+                      y: pattern.isTop ? y + pad : y + h - blockH - pad,
+                      isTop: pattern.isTop,
+                      isLeft: pattern.isLeft,
+                    });
+
+                    // Add fallback positions
+                    for (const p of patterns) {
+                      if (p !== pattern) {
+                        candidatePositions.push({
+                          x: p.isLeft ? x + pad : x + w - blockW - pad,
+                          y: p.isTop ? y + pad : y + h - blockH - pad,
+                          isTop: p.isTop,
+                          isLeft: p.isLeft,
+                        });
+                      }
+                    }
+
+                    // Add center positions as last resort
+                    candidatePositions.push(
+                      { x: x + Math.round((w - blockW) / 2), y: y + pad, isTop: true, isLeft: true },
+                      { x: x + Math.round((w - blockW) / 2), y: y + h - blockH - pad, isTop: false, isLeft: true }
+                    );
+
+                    chosen = findNonOverlappingPosition(blockW, blockH, candidatePositions);
+                  }
+
+                  // Use AI-provided dimensions or calculated ones
+                  const finalWidth = aiWidth ?? blockW;
+                  const finalHeight = aiHeight ?? blockH;
+
+                  placedBlocks.push({ x: chosen.x, y: chosen.y, w: finalWidth, h: finalHeight });
+
+                  // Use AI tail direction if available, otherwise calculate from position
+                  let tailPosition: TailPosition = aiTailDirection ?? 'none';
+
+                  if (!aiTailDirection || aiTailDirection === 'none') {
+                    const panelCenterX = x + w / 2;
+                    const bubbleCenterX = chosen.x + finalWidth / 2;
+
+                    // Determine tail direction based on where panel center is relative to bubble
+                    if (chosen.isTop) {
+                      // Bubble is at top - tail should point down
+                      if (bubbleCenterX < panelCenterX) {
+                        tailPosition = 'bottom-right';
+                      } else {
+                        tailPosition = 'bottom-left';
+                      }
+                    } else {
+                      // Bubble is at bottom - tail should point up
+                      if (bubbleCenterX < panelCenterX) {
+                        tailPosition = 'top-right';
+                      } else {
+                        tailPosition = 'top-left';
+                      }
+                    }
+                  }
+
+                  const bubbleStyle = getBubbleStyle(text, di);
+
+                  elements.push({
                     id: createId(),
                     type: 'dialogue',
-                    x: isLeft ? x + 15 : x + w - 175,
-                    y: dialogueY,
-                    width: 160,
-                    height: 80,
+                    x: chosen.x,
+                    y: chosen.y,
+                    width: finalWidth,
+                    height: finalHeight,
                     rotation: 0,
                     zIndex: zIndex++,
-                    speaker: dlg.characterId.toUpperCase(),
-                    text: dlg.text,
-                    bgColor: '#ffffff',
-                    textColor: '#000000',
-                    borderColor: '#000000',
+                    speaker: speaker,
+                    text: text,
+                    bgColor: stylePreset.dialogue.bgColor,
+                    textColor: stylePreset.dialogue.textColor,
+                    borderColor: stylePreset.dialogue.borderColor,
                     borderWidth: 2,
-                    fontSize: 11,
-                    tailPosition: isLeft ? 'bottom-left' : 'bottom-right',
-                    bubbleStyle: 'round',
-                  };
-                  elements.push(dialogueElement);
-                  dialogueY -= 90;
+                    fontSize: 12,
+                    tailPosition: tailPosition,
+                    bubbleStyle: bubbleStyle,
+                  } as DialogueElement);
                 }
               }
             }

@@ -18,6 +18,10 @@ import {
   BodyType,
   FacialExpression,
   PanelDialogue,
+  ComicStyle,
+  ComicSetting,
+  COMIC_STYLE_PROMPTS,
+  COMIC_SETTING_PROMPTS,
 } from '@kitsumy/types';
 import dotenv from 'dotenv';
 
@@ -111,9 +115,18 @@ const singlePanelSchema = z.object({
   dialogue: z.array(z.object({
     characterId: z.string(),
     text: z.string(),
-    bubblePosition: z.string().nullable().optional(), // flexible positioning
+    placement: z.enum([
+      'top-left', 'top-center', 'top-right',
+      'middle-left', 'middle-center', 'middle-right',
+      'bottom-left', 'bottom-center', 'bottom-right'
+    ]).optional(), // 9-zone grid placement
   })).nullable().optional().default([]),
   narrative: z.string().nullable().optional().default(null),
+  narrativePlacement: z.enum([
+    'top-left', 'top-center', 'top-right',
+    'middle-left', 'middle-center', 'middle-right',
+    'bottom-left', 'bottom-center', 'bottom-right'
+  ]).nullable().optional(),
   sfx: z.string().nullable().optional().default(null),
   // Image generation prompts for Flux
   imagePrompt: z.string(), // Ready-to-use prompt for Flux
@@ -131,41 +144,17 @@ const reviewSchema = z.object({
   overallQuality: z.enum(['good', 'needs_fixes', 'poor']),
 });
 
-// ============================================
-// Style Prompts for Flux
-// ============================================
-
-const VISUAL_STYLE_PROMPTS: Record<string, string> = {
-  'american-classic': 'comic book art, Marvel DC style, bold lines, dynamic poses, vibrant colors, halftone dots',
-  'noir': 'noir comic art, high contrast black and white, dramatic shadows, Frank Miller style, chiaroscuro lighting',
-  'manga': 'manga style, Japanese comic art, clean lines, expressive eyes, screentones, dynamic action lines',
-  'euro-bd': 'European bande dessinée style, Tintin Moebius inspired, clean ligne claire, detailed backgrounds',
-  'watercolor': 'watercolor painting style, soft edges, flowing colors, painterly comic art, artistic washes',
-  'retro': 'vintage 1950s comic art, retro illustration, classic Americana, warm nostalgic colors',
-  'cyberpunk': 'cyberpunk art style, neon lights, sci-fi, futuristic, high tech low life, glowing elements',
-  'whimsical': 'children book illustration, whimsical art, soft colors, friendly characters, storybook style',
-  'horror': 'horror comic art, dark fantasy, gothic illustration, eerie atmosphere, creepy details',
-  'minimalist': 'minimalist comic art, simple lines, limited palette, modern clean design, negative space',
-  'ukiyo-e': 'ukiyo-e style, Japanese woodblock print, flat colors, bold outlines, traditional art',
-  'pop-art': 'pop art style, Lichtenstein inspired, Ben-Day dots, bold primary colors, comic book aesthetic',
-  'sketch': 'pencil sketch style, storyboard art, rough lines, crosshatching, hand-drawn look',
-  'cel-shaded': 'cel-shaded art, Borderlands Spider-Verse style, bold outlines, flat shading, 3D comic look',
-  'pulp': '1930s pulp fiction art, vintage adventure illustration, dramatic lighting, action packed',
-  'woodcut': 'woodcut print style, medieval illustration, bold black lines, textured, handcrafted look',
-  'art-nouveau': 'art nouveau style, Alphonse Mucha inspired, decorative borders, flowing organic lines',
-  'graffiti': 'street art style, graffiti, spray paint aesthetic, urban, bold colors, edgy',
-  'chibi': 'chibi style, super-deformed cute characters, big heads, small bodies, kawaii',
-  'soviet-poster': 'Soviet propaganda poster style, bold red and black, constructivist, heroic poses',
+// Style prompts imported from @kitsumy/types: COMIC_STYLE_PROMPTS, COMIC_SETTING_PROMPTS
+// Helper to get style prompts with fallback for unknown styles
+const getStylePrompts = (style: string) => {
+  return COMIC_STYLE_PROMPTS[style as ComicStyle] || {
+    prefix: 'comic book panel illustration,',
+    suffix: 'professional comic art style'
+  };
 };
 
-const SETTING_PROMPTS: Record<string, string> = {
-  'realistic': 'realistic setting, contemporary, grounded in reality',
-  'sci-fi': 'science fiction, futuristic technology, space, advanced civilization',
-  'cyberpunk': 'cyberpunk setting, dystopian future, neon, cybernetic implants, megacities',
-  'fantasy': 'fantasy setting, magic, medieval, mythical creatures, enchanted',
-  'steampunk': 'steampunk setting, Victorian era, brass gears, steam-powered machinery',
-  'supernatural': 'supernatural setting, ghosts, vampires, demons, paranormal',
-  'post-apocalyptic': 'post-apocalyptic setting, wasteland, ruins, survival, desolation',
+const getSettingPrompt = (setting: string) => {
+  return COMIC_SETTING_PROMPTS[setting as ComicSetting] || '';
 };
 
 // ============================================
@@ -173,7 +162,7 @@ const SETTING_PROMPTS: Record<string, string> = {
 // ============================================
 
 const FEW_SHOT_PANEL_EXAMPLE_UK = `
-ПРИКЛАД ЯКІСНОЇ ПАНЕЛІ:
+ПРИКЛАД ЯКІСНОЇ ПАНЕЛІ (зверніть увагу на формат imagePrompt - стиль НА ПОЧАТКУ і В КІНЦІ, та КОМПОЗИЦІЮ для тексту):
 {
   "characters": [
     {
@@ -192,16 +181,17 @@ const FEW_SHOT_PANEL_EXAMPLE_UK = `
     "focus": "char-1"
   },
   "dialogue": [
-    { "characterId": "char-1", "text": "Друга рота, відповідайте!", "bubblePosition": "top-right" }
+    { "characterId": "char-1", "text": "Друга рота, відповідайте!", "placement": "top-right" }
   ],
   "narrative": "Зв'язок обірвався три хвилини тому.",
+  "narrativePlacement": "top-left",
   "sfx": "КРРРР...",
-  "imagePrompt": "medium-close-up low-angle shot, determined soldier crouching behind cover holding radio to ear, olive skin short black hair slicked back, military uniform, battlefield dawn smoke debris, tense atmosphere, noir comic art high contrast dramatic shadows",
-  "negativePrompt": "blurry, low quality, text, watermark, speech bubbles"
+  "imagePrompt": "comic book panel illustration, professional comic art, medium-close-up low-angle shot, determined soldier crouching behind cover holding radio to ear, olive skin short black hair slicked back, military uniform, battlefield dawn smoke debris, asymmetrical composition leaving room for speech bubbles in top corners, negative space for text, tense atmosphere, Marvel DC comic book style, bold ink lines, dynamic composition, vibrant saturated colors, halftone dots texture, classic American comic aesthetic",
+  "negativePrompt": "realistic photo, photorealistic, 3D render, photograph, blurry, text, speech bubbles, watermark, face filling entire frame, no room for text"
 }`;
 
 const FEW_SHOT_PANEL_EXAMPLE_EN = `
-EXAMPLE OF QUALITY PANEL:
+EXAMPLE OF QUALITY PANEL (note imagePrompt format - style at START and END, and COMPOSITION for text):
 {
   "characters": [
     {
@@ -220,12 +210,13 @@ EXAMPLE OF QUALITY PANEL:
     "focus": "char-1"
   },
   "dialogue": [
-    { "characterId": "char-1", "text": "Second company, respond!", "bubblePosition": "top-right" }
+    { "characterId": "char-1", "text": "Second company, respond!", "placement": "top-right" }
   ],
   "narrative": "The connection broke three minutes ago.",
+  "narrativePlacement": "top-left",
   "sfx": "CRACKLE...",
-  "imagePrompt": "medium-close-up low-angle shot, determined soldier crouching behind cover holding radio to ear, olive skin short black hair slicked back, military uniform, battlefield dawn smoke debris, tense atmosphere, noir comic art high contrast dramatic shadows",
-  "negativePrompt": "blurry, low quality, text, watermark, speech bubbles"
+  "imagePrompt": "comic book panel illustration, professional comic art, medium-close-up low-angle shot, determined soldier crouching behind cover holding radio to ear, olive skin short black hair slicked back, military uniform, battlefield dawn smoke debris, asymmetrical composition leaving room for speech bubbles in top corners, negative space for text, tense atmosphere, Marvel DC comic book style, bold ink lines, dynamic composition, vibrant saturated colors, halftone dots texture, classic American comic aesthetic",
+  "negativePrompt": "realistic photo, photorealistic, 3D render, photograph, blurry, text, speech bubbles, watermark, face filling entire frame, no room for text"
 }`;
 
 // ============================================
@@ -859,8 +850,8 @@ Analyze and return your thinking:
     const validIdsString = [...mainCharIds, ...anonCharIds].join(', ') || 'none';
 
     // Get style prompts for image generation
-    const visualStylePrompt = VISUAL_STYLE_PROMPTS[visualStyle] || 'comic book art style';
-    const settingPrompt = SETTING_PROMPTS[worldSetting] || '';
+    const stylePrompts = getStylePrompts(visualStyle);
+    const settingPrompt = getSettingPrompt(worldSetting);
 
     // Build detailed character descriptions for imagePrompt
     const charDescriptionsForImage = mainCharsInScene.map(c =>
@@ -899,17 +890,38 @@ CRITICAL RULES:
 5. Do NOT add characters who are not in this scene (e.g., don't add char-3 if they're not listed above).
 6. Follow your thinking: use suggested shot "${panelThinking.suggestedShot}" and angle "${panelThinking.suggestedAngle}".
 
-IMAGE PROMPT RULES (for Flux image generation):
+IMAGE PROMPT RULES (for Flux image generation - CRITICAL FOR CONSISTENCY):
 7. "imagePrompt" must be in ENGLISH only (even if content is Ukrainian)
-8. Include: camera shot, angle, character appearances (physical details from DETAILED CHARACTER APPEARANCES), poses, expressions, location, atmosphere, and ALWAYS end with art style
-9. Use these style keywords: "${visualStylePrompt}"${settingPrompt ? `, ${settingPrompt}` : ''}
-10. "negativePrompt" should list things to avoid (blurry, text, speech bubbles, etc.)
+8. START the prompt with: "${stylePrompts.prefix}"
+9. Then include: camera shot, angle, character appearances (EXACT physical details from DETAILED CHARACTER APPEARANCES), poses, expressions, location, atmosphere
+10. END the prompt with: "${stylePrompts.suffix}"${settingPrompt ? `, ${settingPrompt}` : ''}
+11. "negativePrompt" MUST include: "realistic photo, photorealistic, 3D render, photograph, blurry, text, speech bubbles, watermark"
+
+COMPOSITION RULES FOR TEXT PLACEMENT (CRITICAL - Flux must leave empty areas):
+12. For CLOSE-UP shots: Add "negative space in corner for text, face positioned off-center" to imagePrompt
+13. For PORTRAIT shots: Add "composition with empty sky/background area for dialogue" to imagePrompt
+14. For any shot with dialogue: Include "asymmetrical composition leaving room for speech bubbles" in imagePrompt
+15. NEVER generate images where the subject fills the ENTIRE frame - always leave breathing room in at least one corner
+
+IMPORTANT: All panels MUST look like they're from the SAME comic book. Use consistent style keywords!
 
 ${fewShotExample}
 
 SHOT TYPES: extreme-close-up, close-up, medium-close-up, medium, medium-wide, wide, extreme-wide
 CAMERA ANGLES: eye-level, low-angle, high-angle, dutch-angle, birds-eye, worms-eye, over-the-shoulder
-BUBBLE POSITIONS: top-left, top-right, bottom-left, bottom-right, top-center, bottom-center
+
+TEXT PLACEMENT (9-zone grid):
+┌───────────┬───────────┬───────────┐
+│ top-left  │top-center │ top-right │
+├───────────┼───────────┼───────────┤
+│middle-left│mid-center │middle-right│
+├───────────┼───────────┼───────────┤
+│bottom-left│bot-center │bottom-right│
+└───────────┴───────────┴───────────┘
+- Place dialogue near speaking character when visible
+- Avoid placing text where it would cover faces/action
+- Narrative boxes typically go in corners (top-left preferred)
+- Each dialogue needs unique placement (no overlaps)
 
 Return ONLY the panel JSON (no wrapper object):
 {
@@ -917,8 +929,9 @@ Return ONLY the panel JSON (no wrapper object):
   "action": "...",
   "mood": "...",
   "camera": { "shot": "...", "angle": "...", "focus": "..." },
-  "dialogue": [...],
+  "dialogue": [{ "characterId": "char-1", "text": "...", "placement": "top-left" }],
   "narrative": "..." or null,
+  "narrativePlacement": "top-left" or null,
   "sfx": "..." or null,
   "imagePrompt": "detailed prompt for Flux in English...",
   "negativePrompt": "blurry, low quality, text, watermark, speech bubbles"
@@ -961,6 +974,13 @@ Return ONLY the panel JSON (no wrapper object):
       }
     }
 
+    // Convert dialogue with placement
+    const dialogueWithPlacement: PanelDialogue[] = validDialogue.map(d => ({
+      characterId: d.characterId,
+      text: d.text,
+      placement: d.placement || undefined,
+    }));
+
     return {
       id: `ch${chIdx + 1}-p${pIdx + 1}-pan${panelIndex + 1}`,
       position: panelIndex + 1,
@@ -972,8 +992,9 @@ Return ONLY the panel JSON (no wrapper object):
         angle: result.camera.angle,
         focus: normalizedFocus || undefined,
       },
-      dialogue: validDialogue as PanelDialogue[],
+      dialogue: dialogueWithPlacement,
       narrative: result.narrative ?? null,
+      narrativePlacement: result.narrativePlacement || undefined,
       sfx: result.sfx ?? null,
       aspectRatio: aspectRatio,
       imagePrompt: result.imagePrompt,
@@ -1121,13 +1142,15 @@ If no issues found, return empty issues array with "good" quality.`,
       issuesByPanel.set(issue.panelId, existing);
     }
 
-    // Знаходимо і виправляємо кожну панель з проблемами
-    for (const [panelId, panelIssues] of issuesByPanel) {
+    // Знаходимо і виправляємо всі панелі ПАРАЛЕЛЬНО
+    log(`[PLANNER] Fixing ${issuesByPanel.size} panels in PARALLEL...`);
+
+    const fixPromises = Array.from(issuesByPanel.entries()).map(async ([panelId, panelIssues]) => {
       // Парсимо ID: ch1-p1-pan1
       const match = panelId.match(/ch(\d+)-p(\d+)-pan(\d+)/);
       if (!match) {
         log(`[PLANNER]   └─ Cannot parse panelId: ${panelId}`);
-        continue;
+        return null;
       }
 
       const chIdx = parseInt(match[1]) - 1;
@@ -1137,7 +1160,7 @@ If no issues found, return empty issues array with "good" quality.`,
       // Перевіряємо чи існує
       if (!chapters[chIdx]?.pages[pIdx]?.panels[panIdx]) {
         log(`[PLANNER]   └─ Panel not found: ${panelId}`);
-        continue;
+        return null;
       }
 
       const currentPanel = chapters[chIdx].pages[pIdx].panels[panIdx];
@@ -1180,38 +1203,56 @@ Return the FIXED panel JSON:`,
           `Fix ${panelId}`
         );
 
-        // Оновлюємо панель
-        const validIds = new Set(characters.map(c => c.id));
-        const charactersArray = fixedPanel.characters || [];
-        const dialogueArray = fixedPanel.dialogue || [];
-
-        chapters[chIdx].pages[pIdx].panels[panIdx] = {
-          id: panelId,
-          position: currentPanel.position,
-          characters: charactersArray.filter(c => validIds.has(c.characterId)) as CharacterInPanel[],
-          action: fixedPanel.action,
-          mood: fixedPanel.mood,
-          camera: {
-            shot: fixedPanel.camera.shot,
-            angle: fixedPanel.camera.angle,
-            focus: Array.isArray(fixedPanel.camera.focus) ? fixedPanel.camera.focus[0] : fixedPanel.camera.focus || undefined,
-          },
-          dialogue: dialogueArray.filter(d => validIds.has(d.characterId)) as PanelDialogue[],
-          narrative: fixedPanel.narrative ?? null,
-          sfx: fixedPanel.sfx ?? null,
-          // Preserve aspectRatio from original (layout-based)
-          aspectRatio: currentPanel.aspectRatio,
-          // Preserve imagePrompt from fix or fallback to original
-          imagePrompt: fixedPanel.imagePrompt || currentPanel.imagePrompt,
-          negativePrompt: fixedPanel.negativePrompt || currentPanel.negativePrompt,
-          // Preserve characterSeeds from original
-          characterSeeds: currentPanel.characterSeeds,
-        };
-
         log(`[PLANNER]   └─ Fixed ${panelId} ✓`);
+
+        return {
+          chIdx,
+          pIdx,
+          panIdx,
+          panelId,
+          currentPanel,
+          fixedPanel,
+        };
       } catch (err) {
         log(`[PLANNER]   └─ Failed to fix ${panelId}: ${err}`);
+        return null;
       }
+    });
+
+    // Чекаємо на всі паралельні фікси
+    const fixResults = await Promise.all(fixPromises);
+
+    // Застосовуємо результати
+    const validIds = new Set(characters.map(c => c.id));
+    for (const result of fixResults) {
+      if (!result) continue;
+
+      const { chIdx, pIdx, panIdx, panelId, currentPanel, fixedPanel } = result;
+      const charactersArray = fixedPanel.characters || [];
+      const dialogueArray = fixedPanel.dialogue || [];
+
+      chapters[chIdx].pages[pIdx].panels[panIdx] = {
+        id: panelId,
+        position: currentPanel.position,
+        characters: charactersArray.filter(c => validIds.has(c.characterId)) as CharacterInPanel[],
+        action: fixedPanel.action,
+        mood: fixedPanel.mood,
+        camera: {
+          shot: fixedPanel.camera.shot,
+          angle: fixedPanel.camera.angle,
+          focus: Array.isArray(fixedPanel.camera.focus) ? fixedPanel.camera.focus[0] : fixedPanel.camera.focus || undefined,
+        },
+        dialogue: dialogueArray.filter(d => validIds.has(d.characterId)) as PanelDialogue[],
+        narrative: fixedPanel.narrative ?? null,
+        sfx: fixedPanel.sfx ?? null,
+        // Preserve aspectRatio from original (layout-based)
+        aspectRatio: currentPanel.aspectRatio,
+        // Preserve imagePrompt from fix or fallback to original
+        imagePrompt: fixedPanel.imagePrompt || currentPanel.imagePrompt,
+        negativePrompt: fixedPanel.negativePrompt || currentPanel.negativePrompt,
+        // Preserve characterSeeds from original
+        characterSeeds: currentPanel.characterSeeds,
+      };
     }
 
     return chapters;

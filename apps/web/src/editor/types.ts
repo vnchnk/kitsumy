@@ -99,6 +99,15 @@ export interface NarrativeElement extends BaseElement {
   padding: number;
 }
 
+export type TailPosition =
+  | 'top-left' | 'top-center' | 'top-right'
+  | 'bottom-left' | 'bottom-center' | 'bottom-right'
+  | 'left-top' | 'left-center' | 'left-bottom'
+  | 'right-top' | 'right-center' | 'right-bottom'
+  | 'none';
+
+export type BubbleStyle = 'round' | 'cloud' | 'square' | 'shout' | 'whisper';
+
 export interface DialogueElement extends BaseElement {
   type: 'dialogue';
   speaker: string;
@@ -108,8 +117,8 @@ export interface DialogueElement extends BaseElement {
   borderColor: string;
   borderWidth: number;
   fontSize: number;
-  tailPosition: 'left' | 'right' | 'bottom-left' | 'bottom-right' | 'none';
-  bubbleStyle: 'round' | 'cloud' | 'square' | 'shout';
+  tailPosition: TailPosition;
+  bubbleStyle: BubbleStyle;
 }
 
 export type CanvasElement = ImageElement | NarrativeElement | DialogueElement;

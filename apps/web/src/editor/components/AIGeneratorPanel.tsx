@@ -325,7 +325,7 @@ export const AIGeneratorPanel = () => {
             borderColor: '#000000',
             borderWidth: 3,
             fontSize: 12,
-            tailPosition: diaIndex === 0 ? 'bottom-left' : diaIndex === 1 ? 'bottom-right' : 'left',
+            tailPosition: diaIndex === 0 ? 'bottom-left' : diaIndex === 1 ? 'bottom-right' : 'bottom-center',
             bubbleStyle: 'round',
           };
           elements.push(dialogueElement);

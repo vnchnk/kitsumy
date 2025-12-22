@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { useEditorStore } from '../store';
 import { CanvasElement, ImageElement, NarrativeElement, DialogueElement, CLIP_PRESETS, BorderStyle } from '../types';
+import { SpeechBubble } from './SpeechBubble';
 
 // Convert points array to CSS polygon string
 const pointsToClipPath = (points: number[][] | null): string => {
@@ -730,7 +731,6 @@ export const EditorCanvas = () => {
         padding: el.padding,
         fontSize: el.fontSize,
         fontFamily: FONT_FAMILIES[el.fontFamily],
-        fontWeight: 'bold',
         lineHeight: 1.3,
         boxShadow: '3px 3px 0 rgba(0,0,0,1)',
       }}
@@ -739,56 +739,38 @@ export const EditorCanvas = () => {
     </div>
   );
 
-  const renderDialogueElement = (el: DialogueElement) => {
-    const borderRadius =
-      el.bubbleStyle === 'round'
-        ? '16px'
-        : el.bubbleStyle === 'cloud'
-        ? '20px'
-        : el.bubbleStyle === 'square'
-        ? '4px'
-        : '4px';
+  // Map bubble style to SpeechBubble style prop
+  const getBubbleType = (style: string): 'speech' | 'thought' | 'shout' => {
+    if (style === 'cloud') return 'thought';
+    if (style === 'shout') return 'shout';
+    return 'speech';
+  };
 
+  // Map tail position to simplified version for SpeechBubble
+  const getSimpleTailPosition = (pos: string): 'bottom-left' | 'bottom-center' | 'bottom-right' | 'top-left' | 'top-center' | 'top-right' | 'none' => {
+    if (pos === 'none') return 'none';
+    if (pos.startsWith('bottom')) return pos as 'bottom-left' | 'bottom-center' | 'bottom-right';
+    if (pos.startsWith('top')) return pos as 'top-left' | 'top-center' | 'top-right';
+    // Map left/right positions to bottom equivalents
+    if (pos.includes('left')) return 'bottom-left';
+    if (pos.includes('right')) return 'bottom-right';
+    return 'bottom-center';
+  };
+
+  const renderDialogueElement = (el: DialogueElement) => {
     return (
-      <div className="absolute inset-0 flex flex-col">
-        <div
-          className="flex-1 overflow-hidden relative"
-          style={{
-            backgroundColor: el.bgColor,
-            color: el.textColor,
-            border: `${el.borderWidth}px solid ${el.borderColor}`,
-            borderRadius,
-            padding: 12,
-            fontSize: el.fontSize,
-            fontFamily: FONT_FAMILIES.comic,
-            fontWeight: 'bold',
-            lineHeight: 1.3,
-            boxShadow: '3px 3px 0 rgba(0,0,0,1)',
-          }}
-        >
-          {el.speaker && (
-            <span className="block text-[10px] uppercase opacity-50 mb-1">{el.speaker}</span>
-          )}
-          {el.text}
-        </div>
-        {/* Tail */}
-        {el.tailPosition !== 'none' && (
-          <svg
-            className="absolute"
-            width="20"
-            height="15"
-            style={{
-              bottom: el.tailPosition.startsWith('bottom') ? -12 : undefined,
-              top: !el.tailPosition.startsWith('bottom') ? -12 : undefined,
-              left: el.tailPosition.includes('left') ? '20%' : undefined,
-              right: el.tailPosition.includes('right') ? '20%' : undefined,
-              transform: el.tailPosition.startsWith('bottom') ? 'none' : 'rotate(180deg)',
-            }}
-          >
-            <path d="M0,0 L10,15 L20,0" fill={el.bgColor} stroke={el.borderColor} strokeWidth={el.borderWidth} />
-          </svg>
-        )}
-      </div>
+      <SpeechBubble
+        width={el.width}
+        height={el.height}
+        text={el.text}
+        textColor={el.textColor}
+        bgColor={el.bgColor}
+        borderColor={el.borderColor}
+        borderWidth={el.borderWidth}
+        fontSize={el.fontSize}
+        tailPosition={getSimpleTailPosition(el.tailPosition)}
+        style={getBubbleType(el.bubbleStyle)}
+      />
     );
   };
 
@@ -1018,30 +1000,42 @@ export const EditorCanvas = () => {
                           )}
                         </div>
                       )}
-                      {el.type === 'narrative' && (
-                        <div
-                          className="w-full h-full flex items-center justify-center text-xs p-2"
-                          style={{
-                            backgroundColor: (el as NarrativeElement).bgColor,
-                            color: (el as NarrativeElement).textColor,
-                            border: `${(el as NarrativeElement).borderWidth}px solid ${(el as NarrativeElement).borderColor}`,
-                          }}
-                        >
-                          {(el as NarrativeElement).text}
-                        </div>
-                      )}
-                      {el.type === 'dialogue' && (
-                        <div
-                          className="w-full h-full flex items-center justify-center text-xs p-2 rounded-2xl"
-                          style={{
-                            backgroundColor: (el as DialogueElement).bgColor,
-                            color: (el as DialogueElement).textColor,
-                            border: `${(el as DialogueElement).borderWidth}px solid ${(el as DialogueElement).borderColor}`,
-                          }}
-                        >
-                          {(el as DialogueElement).text}
-                        </div>
-                      )}
+                      {el.type === 'narrative' && (() => {
+                        const nar = el as NarrativeElement;
+                        return (
+                          <div
+                            className="w-full h-full overflow-hidden"
+                            style={{
+                              backgroundColor: nar.bgColor,
+                              color: nar.textColor,
+                              border: `${nar.borderWidth}px solid ${nar.borderColor}`,
+                              padding: nar.padding,
+                              fontSize: nar.fontSize,
+                              lineHeight: 1.3,
+                              boxShadow: '2px 2px 0 rgba(0,0,0,1)',
+                            }}
+                          >
+                            {nar.text}
+                          </div>
+                        );
+                      })()}
+                      {el.type === 'dialogue' && (() => {
+                        const dlg = el as DialogueElement;
+                        return (
+                          <SpeechBubble
+                            width={dlg.width}
+                            height={dlg.height}
+                            text={dlg.text}
+                            textColor={dlg.textColor}
+                            bgColor={dlg.bgColor}
+                            borderColor={dlg.borderColor}
+                            borderWidth={dlg.borderWidth}
+                            fontSize={dlg.fontSize * 0.8}
+                            tailPosition={getSimpleTailPosition(dlg.tailPosition)}
+                            style={getBubbleType(dlg.bubbleStyle)}
+                          />
+                        );
+                      })()}
                     </div>
                   ))
                 )}
