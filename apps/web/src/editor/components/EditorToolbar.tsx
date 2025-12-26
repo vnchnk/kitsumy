@@ -15,10 +15,13 @@ import {
   ArrowDown,
   Undo2,
   Redo2,
+  Eye,
 } from 'lucide-react';
 import { useRef } from 'react';
+import { Link, useParams } from 'react-router-dom';
 
 export const EditorToolbar = () => {
+  const { id } = useParams<{ id: string }>();
   const {
     tool,
     setTool,
@@ -216,6 +219,17 @@ export const EditorToolbar = () => {
           <Download size={18} />
         </button>
       </div>
+
+      <div className="w-px h-8 bg-[#333] mx-2" />
+
+      {/* Preview */}
+      <Link
+        to={`/project/${id}/preview`}
+        className="flex items-center gap-2 px-3 py-2 bg-[#252525] rounded-lg text-[#888] hover:text-white hover:bg-[#333] transition-colors"
+      >
+        <Eye size={18} />
+        <span className="text-sm">Preview</span>
+      </Link>
     </div>
   );
 };
