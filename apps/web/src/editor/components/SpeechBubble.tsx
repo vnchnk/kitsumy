@@ -206,14 +206,19 @@ export const SpeechBubble: React.FC<SpeechBubbleProps> = ({
         {style === 'shout' && renderShoutBubble()}
       </svg>
 
-      {/* Text overlay */}
+      {/* Text overlay - always centered within bubble body (excluding tail) */}
       <div
         className="absolute flex items-center justify-center text-center"
         style={{
+          // Position text area exactly within the bubble body
+          // bubbleH = height of bubble body (without tail)
+          // For bottom tail: body is y=0 to y=bubbleH, text centered within
+          // For top tail: body is y=tailHeight to y=height, text centered within
           top: style === 'speech' && tailPosition.startsWith('top') ? tailHeight + padding : padding,
           left: padding,
           right: padding,
-          bottom: style === 'speech' && tailPosition.startsWith('bottom') ? tailHeight + padding : padding,
+          // Height is always bubbleH - 2*padding, positioned correctly based on tail
+          height: bubbleH - padding * 2,
           color: textColor,
           fontSize,
           fontFamily: '"Comic Neue", "Comic Sans MS", cursive',
