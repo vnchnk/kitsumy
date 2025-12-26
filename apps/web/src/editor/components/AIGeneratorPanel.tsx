@@ -3,6 +3,11 @@ import { useEditorStore } from '../store';
 import { ImageElement, NarrativeElement, DialogueElement, PAPER_SIZES } from '../types';
 import { Sparkles, Loader2 } from 'lucide-react';
 import { ComicStyle, COMIC_STYLE_NAMES } from '@kitsumy/types';
+import {
+  calculateBubbleDimensions,
+  constrainBubblePosition,
+  distributeBubbles,
+} from '../utils/textMeasure';
 
 const STYLES: ComicStyle[] = [
   'american-classic',
@@ -264,16 +269,41 @@ export const AIGeneratorPanel = () => {
         elements.push(imageElement);
 
         // 2. Create Narrative Element OVER the image (top-center)
+        // Use smart text measurement for proper sizing
+        let narrativeHeight = 0;
         if (panel.narrative && panel.narrative.trim()) {
-          const narrativeW = Math.min(panelW * 0.7, 300);
-          const narrativeH = 65;
+          const narrativeDims = calculateBubbleDimensions({
+            text: panel.narrative,
+            fontSize: 11,
+            fontFamily: 'comic',
+            maxWidth: panelW * 0.75,
+            maxHeight: panelH * 0.25,
+            padding: 10,
+            tailHeight: 0, // Narrative boxes don't have tails
+            minWidth: 100,
+            minHeight: 35,
+          });
+
+          const narrativeW = narrativeDims.width;
+          narrativeHeight = narrativeDims.height;
+
+          // Constrain position within panel
+          const narrativePos = constrainBubblePosition(
+            panelX + (panelW - narrativeW) / 2,
+            panelY + 10,
+            narrativeW,
+            narrativeHeight,
+            panelX, panelY, panelW, panelH,
+            8
+          );
+
           const narrativeElement: NarrativeElement = {
             id: createId(),
             type: 'narrative',
-            x: Math.round(panelX + (panelW - narrativeW) / 2), // Center horizontally
-            y: Math.round(panelY + 12),
+            x: Math.round(narrativePos.x),
+            y: Math.round(narrativePos.y),
             width: Math.round(narrativeW),
-            height: narrativeH,
+            height: Math.round(narrativeHeight),
             rotation: -1,
             zIndex: baseZIndex + 5,
             text: panel.narrative,
@@ -281,51 +311,122 @@ export const AIGeneratorPanel = () => {
             textColor: '#000000',
             borderColor: '#000000',
             borderWidth: 2,
-            fontSize: 11,
+            fontSize: narrativeDims.fontSize,
             fontFamily: 'comic',
             padding: 10,
           };
           elements.push(narrativeElement);
         }
 
-        // 3. Create Dialogue Bubbles OVER the image (positioned strategically)
-        panel.dialogue.forEach((dia, diaIndex) => {
-          const bubbleW = Math.min(panelW * 0.4, 200);
-          const bubbleH = 85;
+        // 3. Create Dialogue Bubbles with smart sizing
+        const dialogueBubbles: Array<{
+          x: number; y: number; width: number; height: number;
+          text: string; speaker: string; fontSize: number;
+        }> = [];
 
-          // Position bubbles to avoid narrative box (which is top-center)
-          let bubbleX, bubbleY;
+        panel.dialogue.forEach((dia) => {
+          // Calculate optimal bubble size based on text
+          const bubbleDims = calculateBubbleDimensions({
+            text: dia.text,
+            fontSize: 12,
+            fontFamily: 'comic',
+            maxWidth: panelW * 0.45,  // Max 45% of panel width
+            maxHeight: panelH * 0.35, // Max 35% of panel height
+            padding: 12,
+            tailHeight: 20,
+            minWidth: 80,
+            minHeight: 50,
+          });
+
+          dialogueBubbles.push({
+            x: 0, // Will be set by distribution
+            y: 0,
+            width: bubbleDims.width,
+            height: bubbleDims.height,
+            text: dia.text,
+            speaker: dia.speaker,
+            fontSize: bubbleDims.fontSize,
+          });
+        });
+
+        // Calculate initial positions for bubbles
+        const initialPositions = dialogueBubbles.map((bubble, diaIndex) => {
+          // Avoid narrative box area (top center)
+          const hasNarrative = narrativeHeight > 0;
+          const safeTopY = hasNarrative ? panelY + narrativeHeight + 15 : panelY + 10;
+
+          let x, y;
           if (diaIndex === 0) {
-            // Bottom-left corner
-            bubbleX = panelX + 15;
-            bubbleY = panelY + panelH - bubbleH - 15;
+            // First bubble: top-left or bottom-left
+            x = panelX + 10;
+            y = hasNarrative ? panelY + panelH - bubble.height - 10 : safeTopY;
           } else if (diaIndex === 1) {
-            // Bottom-right corner
-            bubbleX = panelX + panelW - bubbleW - 15;
-            bubbleY = panelY + panelH - bubbleH - 15;
+            // Second bubble: top-right or bottom-right
+            x = panelX + panelW - bubble.width - 10;
+            y = hasNarrative ? panelY + panelH - bubble.height - 10 : safeTopY;
           } else {
-            // Middle-right (for 3rd bubble)
-            bubbleX = panelX + panelW - bubbleW - 15;
-            bubbleY = panelY + (panelH - bubbleH) / 2;
+            // Additional bubbles: middle area
+            x = panelX + panelW - bubble.width - 10;
+            y = panelY + (panelH - bubble.height) / 2;
+          }
+
+          return { ...bubble, x, y };
+        });
+
+        // Distribute bubbles to avoid overlaps
+        const distributedPositions = distributeBubbles(
+          initialPositions,
+          panelX, panelY, panelW, panelH
+        );
+
+        // Create dialogue elements with calculated positions
+        dialogueBubbles.forEach((bubble, diaIndex) => {
+          const pos = distributedPositions[diaIndex];
+
+          // Determine tail position based on bubble location in panel
+          const bubbleCenterX = pos.x + bubble.width / 2;
+          const bubbleCenterY = pos.y + bubble.height / 2;
+          const panelCenterX = panelX + panelW / 2;
+          const panelCenterY = panelY + panelH / 2;
+
+          let tailPosition: 'bottom-left' | 'bottom-center' | 'bottom-right' | 'top-left' | 'top-center' | 'top-right';
+          if (bubbleCenterY < panelCenterY) {
+            // Bubble is in top half - tail points down
+            if (bubbleCenterX < panelCenterX - panelW * 0.15) {
+              tailPosition = 'bottom-right';
+            } else if (bubbleCenterX > panelCenterX + panelW * 0.15) {
+              tailPosition = 'bottom-left';
+            } else {
+              tailPosition = 'bottom-center';
+            }
+          } else {
+            // Bubble is in bottom half - tail points up
+            if (bubbleCenterX < panelCenterX - panelW * 0.15) {
+              tailPosition = 'top-right';
+            } else if (bubbleCenterX > panelCenterX + panelW * 0.15) {
+              tailPosition = 'top-left';
+            } else {
+              tailPosition = 'top-center';
+            }
           }
 
           const dialogueElement: DialogueElement = {
             id: createId(),
             type: 'dialogue',
-            x: Math.round(bubbleX),
-            y: Math.round(bubbleY),
-            width: Math.round(bubbleW),
-            height: bubbleH,
+            x: Math.round(pos.x),
+            y: Math.round(pos.y),
+            width: Math.round(bubble.width),
+            height: Math.round(bubble.height),
             rotation: 0,
             zIndex: baseZIndex + 10 + diaIndex,
-            speaker: dia.speaker,
-            text: dia.text,
+            speaker: bubble.speaker,
+            text: bubble.text,
             bgColor: '#ffffff',
             textColor: '#000000',
             borderColor: '#000000',
             borderWidth: 3,
-            fontSize: 12,
-            tailPosition: diaIndex === 0 ? 'bottom-left' : diaIndex === 1 ? 'bottom-right' : 'bottom-center',
+            fontSize: bubble.fontSize,
+            tailPosition,
             bubbleStyle: 'round',
           };
           elements.push(dialogueElement);

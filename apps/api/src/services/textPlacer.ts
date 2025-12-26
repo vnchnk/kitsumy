@@ -4,6 +4,8 @@
  * Analyzes generated images using Claude Vision to determine optimal
  * placement positions for dialogue bubbles and narrative boxes.
  * Returns precise coordinates (0-100%) and tail direction.
+ *
+ * Now includes smart text measurement to ensure bubbles are properly sized.
  */
 
 import { ChatAnthropic } from '@langchain/anthropic';
@@ -12,6 +14,93 @@ import { z } from 'zod';
 import dotenv from 'dotenv';
 
 dotenv.config();
+
+// ============================================
+// Smart Text Sizing Utilities
+// ============================================
+
+// Cyrillic characters are slightly wider
+const CYRILLIC_WIDTH_FACTOR = 1.08;
+
+function hasCyrillic(text: string): boolean {
+  return /[\u0400-\u04FF]/.test(text);
+}
+
+/**
+ * Estimate optimal bubble size based on text content (in percentages)
+ */
+function estimateBubbleSize(
+  text: string,
+  type: 'dialogue' | 'narrative' | 'sfx',
+  panelAspectRatio: string = '1:1'
+): { width: number; height: number } {
+  const charCount = text.length;
+  const hasCyr = hasCyrillic(text);
+  const widthFactor = hasCyr ? CYRILLIC_WIDTH_FACTOR : 1;
+
+  // Parse aspect ratio
+  const [w, h] = panelAspectRatio.split(':').map(Number);
+  const aspectRatio = w / h || 1;
+
+  // Base sizing by text length
+  let baseWidth: number;
+  let baseHeight: number;
+
+  if (type === 'sfx') {
+    // SFX are usually short and bold
+    baseWidth = Math.min(35, 15 + charCount * 1.5);
+    baseHeight = Math.min(20, 10 + charCount * 0.5);
+  } else if (type === 'narrative') {
+    // Narrative boxes are wider, less tall
+    if (charCount < 30) {
+      baseWidth = 25 + charCount * 0.4;
+      baseHeight = 10 + Math.ceil(charCount / 20) * 5;
+    } else if (charCount < 80) {
+      baseWidth = 35 + charCount * 0.2;
+      baseHeight = 12 + Math.ceil(charCount / 25) * 4;
+    } else {
+      baseWidth = 45;
+      baseHeight = 18 + Math.ceil(charCount / 30) * 3;
+    }
+  } else {
+    // Dialogue bubbles - need room for tail
+    if (charCount < 20) {
+      // Very short text
+      baseWidth = 18 + charCount * 0.5;
+      baseHeight = 12 + Math.ceil(charCount / 15) * 4;
+    } else if (charCount < 40) {
+      // Short text
+      baseWidth = 22 + charCount * 0.35;
+      baseHeight = 14 + Math.ceil(charCount / 18) * 4;
+    } else if (charCount < 70) {
+      // Medium text
+      baseWidth = 28 + charCount * 0.25;
+      baseHeight = 16 + Math.ceil(charCount / 22) * 4;
+    } else {
+      // Long text
+      baseWidth = 35 + Math.min(charCount * 0.15, 10);
+      baseHeight = 20 + Math.ceil(charCount / 28) * 3;
+    }
+  }
+
+  // Apply cyrillic width factor
+  baseWidth *= widthFactor;
+
+  // Adjust for panel aspect ratio (wider panels = can use wider bubbles)
+  if (aspectRatio > 1.5) {
+    baseWidth *= 0.9; // Wide panel - use relatively narrower bubbles
+    baseHeight *= 1.1;
+  } else if (aspectRatio < 0.7) {
+    baseWidth *= 1.1; // Tall panel - use relatively wider bubbles
+    baseHeight *= 0.9;
+  }
+
+  // Apply constraints
+  const width = Math.max(15, Math.min(50, baseWidth));
+  const height = Math.max(10, Math.min(35, baseHeight));
+
+  return { width: Math.round(width), height: Math.round(height) };
+}
 
 // Tail direction for speech bubbles
 export type TailDirection =
@@ -131,16 +220,22 @@ export class TextPlacer {
       return { placements: [] };
     }
 
-    const textBlocksDescription = textBlocks.map((block) => {
+    // Calculate optimal sizes for each text block
+    const textBlocksWithSizes = textBlocks.map((block) => {
+      const size = estimateBubbleSize(block.text, block.type, panelAspectRatio);
+      return { ...block, suggestedWidth: size.width, suggestedHeight: size.height };
+    });
+
+    const textBlocksDescription = textBlocksWithSizes.map((block) => {
       const textPreview = block.text.substring(0, 60) + (block.text.length > 60 ? '...' : '');
       const charCount = block.text.length;
 
       if (block.type === 'dialogue') {
-        return `- ${block.id}: DIALOGUE from "${block.speaker || 'unknown'}" (${charCount} chars): "${textPreview}"`;
+        return `- ${block.id}: DIALOGUE from "${block.speaker || 'unknown'}" (${charCount} chars, REQUIRED SIZE: ${block.suggestedWidth}x${block.suggestedHeight}%): "${textPreview}"`;
       } else if (block.type === 'narrative') {
-        return `- ${block.id}: NARRATIVE box (${charCount} chars): "${textPreview}"`;
+        return `- ${block.id}: NARRATIVE box (${charCount} chars, REQUIRED SIZE: ${block.suggestedWidth}x${block.suggestedHeight}%): "${textPreview}"`;
       } else {
-        return `- ${block.id}: SFX (${charCount} chars): "${textPreview}"`;
+        return `- ${block.id}: SFX (${charCount} chars, REQUIRED SIZE: ${block.suggestedWidth}x${block.suggestedHeight}%): "${textPreview}"`;
       }
     }).join('\n');
 
@@ -148,13 +243,13 @@ export class TextPlacer {
 
 PANEL ASPECT RATIO: ${panelAspectRatio}
 
-TEXT BLOCKS TO PLACE:
+TEXT BLOCKS TO PLACE (with pre-calculated REQUIRED sizes):
 ${textBlocksDescription}
 
 COORDINATE SYSTEM:
 - x: 0 = left edge, 100 = right edge (position of bubble's LEFT edge)
 - y: 0 = top edge, 100 = bottom edge (position of bubble's TOP edge)
-- width/height: percentage of panel size
+- width/height: USE THE REQUIRED SIZE from each text block above!
 
 TAIL DIRECTION (where the tail points TO, toward the speaker):
 - Options: top-left, top-center, top-right, bottom-left, bottom-center, bottom-right, left-top, left-center, left-bottom, right-top, right-center, right-bottom
@@ -162,36 +257,37 @@ TAIL DIRECTION (where the tail points TO, toward the speaker):
 
 CRITICAL RULES (MUST FOLLOW):
 
-1. **FACE DETECTION - ABSOLUTELY CRITICAL**:
-   - First, identify WHERE the face is in the image (estimate x, y coordinates of face center)
-   - NEVER place bubbles where they would overlap with face bounding box
-   - Face typically occupies: eyes (y: 25-45%), nose (y: 40-55%), mouth (y: 50-65%)
+1. **USE REQUIRED SIZES**: Each text block has a REQUIRED SIZE (width x height). You MUST use these exact dimensions - they were calculated to fit the text properly.
 
-2. **ABSOLUTELY NEVER** place ANY text over:
+2. **FACE DETECTION - ABSOLUTELY CRITICAL**:
+   - First, identify WHERE faces are in the image (estimate x, y coordinates)
+   - NEVER place bubbles where they would overlap with faces
+   - Safe zones are typically: corners, sky areas, empty backgrounds
+
+3. **ABSOLUTELY NEVER** place ANY text over:
    - Faces (eyes, nose, mouth, forehead, cheeks, chin)
    - Hands and fingers
    - Important action or movement
 
-3. **For CLOSE-UP or PORTRAIT shots** (face fills >40% of panel):
-   - Place text in CORNERS ONLY: top-left (x:2-5, y:2-8) or top-right (x:60-75, y:2-8)
-   - If face is centered: use LEFT corner (x:2-5) or RIGHT corner depending on where face is NOT
-   - If face is on LEFT: place bubble on RIGHT (x:60-75, y:2-10)
-   - If face is on RIGHT: place bubble on LEFT (x:2-10, y:2-10)
-   - Use smaller bubbles (width: 25-35%, height: 8-15%)
+4. **For CLOSE-UP or PORTRAIT shots** (face fills >40% of panel):
+   - Place text in CORNERS ONLY
+   - If face is centered: use corner where face is NOT
+   - If face is on LEFT: place bubble on RIGHT corner
+   - If face is on RIGHT: place bubble on LEFT corner
 
-4. **For WIDE/MEDIUM shots**:
+5. **BOUNDARY CHECK**: Ensure placement stays within panel:
+   - x + width <= 98 (leave 2% margin on right)
+   - y + height <= 98 (leave 2% margin on bottom)
+   - x >= 2 (leave 2% margin on left)
+   - y >= 2 (leave 2% margin on top)
+
+6. **For WIDE/MEDIUM shots**:
    - Look for empty areas: sky, walls, floors, shadows
    - Place near but NOT ON characters
    - Prefer corners and edges
 
-5. **Bubble sizing**:
-   - Short text (<30 chars): width 20-28%, height 10-15%
-   - Medium text (30-60 chars): width 28-38%, height 12-20%
-   - Long text (>60 chars): width 35-45%, height 18-28%
-
-6. **General**:
-   - Keep within bounds: x + width <= 95, y + height <= 95
-   - Reading order: top-to-bottom, left-to-right
+7. **General**:
+   - Reading order: top-to-bottom, left-to-right for multiple bubbles
    - Don't overlap bubbles with each other
    - Narrative boxes: corners preferred, no tail
 
@@ -241,47 +337,86 @@ Return ONLY valid JSON:
       const validated = precisePlacementSchema.parse(parsed);
 
       return {
-        placements: validated.placements.map(p => ({
-          id: p.id,
-          x: Math.max(0, Math.min(100, p.x)),
-          y: Math.max(0, Math.min(100, p.y)),
-          width: Math.max(10, Math.min(50, p.width)),
-          height: Math.max(8, Math.min(35, p.height)),
-          tailDirection: this.normalizeTailDirection(p.tailDirection),
-          reason: p.reason,
-        })),
+        placements: validated.placements.map(p => {
+          // Find the pre-calculated size for this block
+          const blockWithSize = textBlocksWithSizes.find(b => b.id === p.id);
+          const suggestedWidth = blockWithSize?.suggestedWidth || p.width;
+          const suggestedHeight = blockWithSize?.suggestedHeight || p.height;
+
+          // Use Claude's suggested size if it's close to our calculation, otherwise use our calculation
+          // This allows Claude some flexibility while ensuring text fits
+          const widthDiff = Math.abs(p.width - suggestedWidth);
+          const heightDiff = Math.abs(p.height - suggestedHeight);
+          const finalWidth = widthDiff <= 5 ? p.width : suggestedWidth;
+          const finalHeight = heightDiff <= 5 ? p.height : suggestedHeight;
+
+          // Constrain position to ensure bubble stays within bounds
+          let x = Math.max(2, p.x);
+          let y = Math.max(2, p.y);
+
+          // Ensure bubble doesn't overflow right/bottom edges
+          if (x + finalWidth > 98) {
+            x = Math.max(2, 98 - finalWidth);
+          }
+          if (y + finalHeight > 98) {
+            y = Math.max(2, 98 - finalHeight);
+          }
+
+          return {
+            id: p.id,
+            x: Math.round(x),
+            y: Math.round(y),
+            width: Math.round(finalWidth),
+            height: Math.round(finalHeight),
+            tailDirection: this.normalizeTailDirection(p.tailDirection),
+            reason: p.reason,
+          };
+        }),
       };
     } catch (error) {
       console.error('[TextPlacer] Error analyzing image:', error);
-      return this.getDefaultPlacements(textBlocks);
+      return this.getDefaultPlacements(textBlocks, panelAspectRatio);
     }
   }
 
   /**
    * Fallback placement when Vision analysis fails
    */
-  private getDefaultPlacements(textBlocks: TextBlock[]): TextPlacementResponse {
+  private getDefaultPlacements(textBlocks: TextBlock[], panelAspectRatio: string = '1:1'): TextPlacementResponse {
     const placements: PrecisePlacement[] = [];
 
-    // Default positions for up to 4 elements
-    const defaultPositions = [
-      { x: 5, y: 5, width: 30, height: 15, tail: 'bottom-right' as TailDirection },
-      { x: 65, y: 5, width: 30, height: 15, tail: 'bottom-left' as TailDirection },
-      { x: 5, y: 75, width: 30, height: 15, tail: 'top-right' as TailDirection },
-      { x: 65, y: 75, width: 30, height: 15, tail: 'top-left' as TailDirection },
+    // Default corner positions
+    const defaultCorners = [
+      { x: 5, y: 5, tail: 'bottom-right' as TailDirection },
+      { x: 55, y: 5, tail: 'bottom-left' as TailDirection },
+      { x: 5, y: 65, tail: 'top-right' as TailDirection },
+      { x: 55, y: 65, tail: 'top-left' as TailDirection },
     ];
 
     textBlocks.forEach((block, i) => {
-      const pos = defaultPositions[i % defaultPositions.length];
+      // Calculate proper size based on text
+      const size = estimateBubbleSize(block.text, block.type, panelAspectRatio);
+      const corner = defaultCorners[i % defaultCorners.length];
+
+      // Adjust position based on calculated size to stay within bounds
+      let x = corner.x;
+      let y = corner.y;
+
+      if (x + size.width > 98) {
+        x = Math.max(2, 98 - size.width);
+      }
+      if (y + size.height > 98) {
+        y = Math.max(2, 98 - size.height);
+      }
 
       placements.push({
         id: block.id,
-        x: pos.x,
-        y: pos.y,
-        width: pos.width,
-        height: pos.height,
-        tailDirection: block.type === 'narrative' ? 'none' : pos.tail,
-        reason: 'Default fallback placement',
+        x,
+        y,
+        width: size.width,
+        height: size.height,
+        tailDirection: block.type === 'narrative' ? 'none' : corner.tail,
+        reason: 'Default fallback placement with calculated size',
       });
     });
 
