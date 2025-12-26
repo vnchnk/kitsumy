@@ -15,6 +15,23 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+// Rate limiting configuration
+const RATE_LIMIT_DELAY_MS = 3000; // 3 seconds between requests
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 5000; // 5 seconds on rate limit error
+
+// Simple queue for rate limiting
+let lastRequestTime = 0;
+
+async function rateLimitedDelay(): Promise<void> {
+  const now = Date.now();
+  const timeSinceLastRequest = now - lastRequestTime;
+  if (timeSinceLastRequest < RATE_LIMIT_DELAY_MS) {
+    await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY_MS - timeSinceLastRequest));
+  }
+  lastRequestTime = Date.now();
+}
+
 // ============================================
 // Smart Text Sizing Utilities
 // ============================================
@@ -306,77 +323,95 @@ Return ONLY valid JSON:
   ]
 }`;
 
-    try {
-      const message = new HumanMessage({
-        content: [
-          {
-            type: 'image_url',
-            image_url: {
-              url: `data:${this.detectMediaType(imageBase64)};base64,${imageBase64}`,
+    // Retry loop with rate limiting
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        // Wait for rate limit
+        await rateLimitedDelay();
+
+        const message = new HumanMessage({
+          content: [
+            {
+              type: 'image_url',
+              image_url: {
+                url: `data:${this.detectMediaType(imageBase64)};base64,${imageBase64}`,
+              },
             },
-          },
-          {
-            type: 'text',
-            text: prompt,
-          },
-        ],
-      });
+            {
+              type: 'text',
+              text: prompt,
+            },
+          ],
+        });
 
-      const response = await this.model.invoke([message]);
+        const response = await this.model.invoke([message]);
 
-      const responseText = typeof response.content === 'string'
-        ? response.content
-        : response.content.map((c: { type: string; text?: string }) => c.type === 'text' ? c.text : '').join('');
+        const responseText = typeof response.content === 'string'
+          ? response.content
+          : response.content.map((c: { type: string; text?: string }) => c.type === 'text' ? c.text : '').join('');
 
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('No JSON found in response');
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+          throw new Error('No JSON found in response');
+        }
+
+        const parsed = JSON.parse(jsonMatch[0]);
+        const validated = precisePlacementSchema.parse(parsed);
+
+        return {
+          placements: validated.placements.map(p => {
+            // Find the pre-calculated size for this block
+            const blockWithSize = textBlocksWithSizes.find(b => b.id === p.id);
+            const suggestedWidth = blockWithSize?.suggestedWidth || p.width;
+            const suggestedHeight = blockWithSize?.suggestedHeight || p.height;
+
+            // Use Claude's suggested size if it's close to our calculation, otherwise use our calculation
+            // This allows Claude some flexibility while ensuring text fits
+            const widthDiff = Math.abs(p.width - suggestedWidth);
+            const heightDiff = Math.abs(p.height - suggestedHeight);
+            const finalWidth = widthDiff <= 5 ? p.width : suggestedWidth;
+            const finalHeight = heightDiff <= 5 ? p.height : suggestedHeight;
+
+            // Constrain position to ensure bubble stays within bounds
+            let x = Math.max(2, p.x);
+            let y = Math.max(2, p.y);
+
+            // Ensure bubble doesn't overflow right/bottom edges
+            if (x + finalWidth > 98) {
+              x = Math.max(2, 98 - finalWidth);
+            }
+            if (y + finalHeight > 98) {
+              y = Math.max(2, 98 - finalHeight);
+            }
+
+            return {
+              id: p.id,
+              x: Math.round(x),
+              y: Math.round(y),
+              width: Math.round(finalWidth),
+              height: Math.round(finalHeight),
+              tailDirection: this.normalizeTailDirection(p.tailDirection),
+              reason: p.reason,
+            };
+          }),
+        };
+      } catch (error: unknown) {
+        const isRateLimit = error instanceof Error &&
+          (error.message.includes('rate_limit') || error.message.includes('429'));
+
+        if (isRateLimit && attempt < MAX_RETRIES) {
+          console.log(`[TextPlacer] Rate limited, waiting ${RETRY_DELAY_MS}ms before retry ${attempt + 1}/${MAX_RETRIES}`);
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+          continue;
+        }
+
+        console.error('[TextPlacer] Error analyzing image:', error);
+        return this.getDefaultPlacements(textBlocks, panelAspectRatio);
       }
-
-      const parsed = JSON.parse(jsonMatch[0]);
-      const validated = precisePlacementSchema.parse(parsed);
-
-      return {
-        placements: validated.placements.map(p => {
-          // Find the pre-calculated size for this block
-          const blockWithSize = textBlocksWithSizes.find(b => b.id === p.id);
-          const suggestedWidth = blockWithSize?.suggestedWidth || p.width;
-          const suggestedHeight = blockWithSize?.suggestedHeight || p.height;
-
-          // Use Claude's suggested size if it's close to our calculation, otherwise use our calculation
-          // This allows Claude some flexibility while ensuring text fits
-          const widthDiff = Math.abs(p.width - suggestedWidth);
-          const heightDiff = Math.abs(p.height - suggestedHeight);
-          const finalWidth = widthDiff <= 5 ? p.width : suggestedWidth;
-          const finalHeight = heightDiff <= 5 ? p.height : suggestedHeight;
-
-          // Constrain position to ensure bubble stays within bounds
-          let x = Math.max(2, p.x);
-          let y = Math.max(2, p.y);
-
-          // Ensure bubble doesn't overflow right/bottom edges
-          if (x + finalWidth > 98) {
-            x = Math.max(2, 98 - finalWidth);
-          }
-          if (y + finalHeight > 98) {
-            y = Math.max(2, 98 - finalHeight);
-          }
-
-          return {
-            id: p.id,
-            x: Math.round(x),
-            y: Math.round(y),
-            width: Math.round(finalWidth),
-            height: Math.round(finalHeight),
-            tailDirection: this.normalizeTailDirection(p.tailDirection),
-            reason: p.reason,
-          };
-        }),
-      };
-    } catch (error) {
-      console.error('[TextPlacer] Error analyzing image:', error);
-      return this.getDefaultPlacements(textBlocks, panelAspectRatio);
     }
+
+    // Fallback if all retries failed
+    return this.getDefaultPlacements(textBlocks, panelAspectRatio);
   }
 
   /**
