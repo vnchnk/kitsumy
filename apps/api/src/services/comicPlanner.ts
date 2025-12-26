@@ -894,8 +894,9 @@ IMAGE PROMPT RULES (for Flux image generation - CRITICAL FOR CONSISTENCY):
 7. "imagePrompt" must be in ENGLISH only (even if content is Ukrainian)
 8. START the prompt with: "${stylePrompts.prefix}"
 9. Then include: camera shot, angle, character appearances (EXACT physical details from DETAILED CHARACTER APPEARANCES), poses, expressions, location, atmosphere
-10. END the prompt with: "${stylePrompts.suffix}"${settingPrompt ? `, ${settingPrompt}` : ''}
-11. "negativePrompt" MUST include: "realistic photo, photorealistic, 3D render, photograph, blurry, text, speech bubbles, watermark"
+10. ADD TO EVERY imagePrompt: "no text, no speech bubbles, no captions, no letters, no words, clean image without any text overlays"
+11. END the prompt with: "${stylePrompts.suffix}"${settingPrompt ? `, ${settingPrompt}` : ''}
+12. "negativePrompt" MUST include: "text, letters, words, speech bubbles, dialogue bubbles, captions, subtitles, writing, typography, watermark, signature, realistic photo, photorealistic, 3D render, photograph, blurry"
 
 COMPOSITION RULES FOR TEXT PLACEMENT (CRITICAL - Flux must leave empty areas):
 12. For CLOSE-UP shots: Add "negative space in corner for text, face positioned off-center" to imagePrompt
