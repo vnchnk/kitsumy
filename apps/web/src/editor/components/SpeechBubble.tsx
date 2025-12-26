@@ -162,8 +162,9 @@ export const SpeechBubble: React.FC<SpeechBubbleProps> = ({
     const cy = height / 2;
     const outerRx = width / 2 - borderWidth;
     const outerRy = height / 2 - borderWidth;
-    const innerRx = outerRx * 0.75;
-    const innerRy = outerRy * 0.75;
+    // Deeper valleys between spikes (0.65 instead of 0.75) for more dramatic effect
+    const innerRx = outerRx * 0.65;
+    const innerRy = outerRy * 0.65;
     const spikes = 12;
 
     let points = '';
@@ -209,22 +210,34 @@ export const SpeechBubble: React.FC<SpeechBubbleProps> = ({
       {/* Text overlay - always centered within bubble body (excluding tail) */}
       <div
         className="absolute flex items-center justify-center text-center"
-        style={{
-          // Position text area exactly within the bubble body
-          // bubbleH = height of bubble body (without tail)
-          // For bottom tail: body is y=0 to y=bubbleH, text centered within
-          // For top tail: body is y=tailHeight to y=height, text centered within
-          top: style === 'speech' && tailPosition.startsWith('top') ? tailHeight + padding : padding,
-          left: padding,
-          right: padding,
-          // Height is always bubbleH - 2*padding, positioned correctly based on tail
-          height: bubbleH - padding * 2,
-          color: textColor,
-          fontSize,
-          fontFamily: '"Comic Neue", "Comic Sans MS", cursive',
-          lineHeight: 1.2,
-          fontWeight: 500,
-        }}
+        style={
+          style === 'shout'
+            ? {
+                // Shout bubble: text must fit in the inner star area (roughly 55% of dimensions)
+                // Center it exactly in the middle of the starburst
+                top: height * 0.25,
+                left: width * 0.25,
+                width: width * 0.5,
+                height: height * 0.5,
+                color: textColor,
+                fontSize: fontSize * 0.9, // Slightly smaller for shout bubbles
+                fontFamily: '"Comic Neue", "Comic Sans MS", cursive',
+                lineHeight: 1.1,
+                fontWeight: 700, // Bold for shout effect
+              }
+            : {
+                // Speech/Thought bubbles: position based on tail
+                top: style === 'speech' && tailPosition.startsWith('top') ? tailHeight + padding : padding,
+                left: padding,
+                right: padding,
+                height: bubbleH - padding * 2,
+                color: textColor,
+                fontSize,
+                fontFamily: '"Comic Neue", "Comic Sans MS", cursive',
+                lineHeight: 1.2,
+                fontWeight: 500,
+              }
+        }
       >
         {text}
       </div>

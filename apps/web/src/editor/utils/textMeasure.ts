@@ -18,6 +18,7 @@ export interface TextMeasureOptions {
   tailHeight?: number;    // Space for tail (default: 20)
   minWidth?: number;      // Minimum bubble width
   minHeight?: number;     // Minimum bubble height
+  bubbleStyle?: 'speech' | 'thought' | 'shout'; // Bubble style affects usable area
 }
 
 export interface BubbleDimensions {
@@ -121,7 +122,12 @@ export function calculateBubbleDimensions(options: TextMeasureOptions): BubbleDi
     tailHeight = 20,
     minWidth = 60,
     minHeight = 40,
+    bubbleStyle = 'speech',
   } = options;
+
+  // Shout bubbles (starburst) only use ~50% of area for text
+  // So we need to make them ~2x larger than speech bubbles
+  const shoutMultiplier = bubbleStyle === 'shout' ? 2.0 : 1.0;
 
   // If no text, return minimum size
   if (!text.trim()) {
@@ -178,14 +184,15 @@ export function calculateBubbleDimensions(options: TextMeasureOptions): BubbleDi
   }
 
   // Add padding and constraints
+  // For shout bubbles, multiply dimensions to account for reduced usable area
   const bubbleWidth = Math.max(
-    minWidth,
-    Math.min(maxWidth, maxLineWidth + padding * 2)
+    minWidth * shoutMultiplier,
+    Math.min(maxWidth, (maxLineWidth + padding * 2) * shoutMultiplier)
   );
 
   const bubbleHeight = Math.max(
-    minHeight,
-    Math.min(maxHeight, textHeight + padding * 2 + tailHeight)
+    minHeight * shoutMultiplier,
+    Math.min(maxHeight, (textHeight + padding * 2 + (bubbleStyle === 'shout' ? 0 : tailHeight)) * shoutMultiplier)
   );
 
   return {
@@ -294,11 +301,16 @@ export function calculateBubblePercentages(
   fontSize: number,
   fontFamily: 'comic' | 'serif' | 'sans',
   panelWidth: number,
-  panelHeight: number
+  panelHeight: number,
+  bubbleStyle: 'speech' | 'thought' | 'shout' = 'speech'
 ): { widthPercent: number; heightPercent: number; adjustedFontSize: number } {
+  // Shout bubbles can be larger since they need more space
+  const maxWidthPercent = bubbleStyle === 'shout' ? 0.55 : 0.45;
+  const maxHeightPercent = bubbleStyle === 'shout' ? 0.45 : 0.35;
+
   // Calculate in pixels first
-  const maxWidth = panelWidth * 0.45;  // Max 45% of panel width
-  const maxHeight = panelHeight * 0.35; // Max 35% of panel height
+  const maxWidth = panelWidth * maxWidthPercent;
+  const maxHeight = panelHeight * maxHeightPercent;
 
   const dimensions = calculateBubbleDimensions({
     text,
@@ -310,6 +322,7 @@ export function calculateBubblePercentages(
     tailHeight: 20,
     minWidth: panelWidth * 0.15,
     minHeight: panelHeight * 0.1,
+    bubbleStyle,
   });
 
   return {
