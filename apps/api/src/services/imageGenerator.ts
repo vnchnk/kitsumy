@@ -26,7 +26,7 @@ if (!fs.existsSync(IMAGES_DIR)) {
   fs.mkdirSync(IMAGES_DIR, { recursive: true });
 }
 
-export type ImageProvider = 'flux-schnell' | 'flux-dev' | 'flux-pro' | 'runpod-flux';
+export type ImageProvider = 'flux-schnell' | 'flux-dev' | 'flux-pro' | 'runpod-flux' | 'flux-kontext';
 export type AspectRatio = '1:1' | '16:9' | '9:16' | '4:3' | '3:4' | '3:2' | '2:3';
 
 export interface GenerateImageRequest {
@@ -35,6 +35,25 @@ export interface GenerateImageRequest {
   aspectRatio?: AspectRatio;
   seed?: number;
   provider?: ImageProvider;
+  /** Reference image URL for FLUX Kontext (character consistency) */
+  referenceImage?: string;
+}
+
+/**
+ * Request for FLUX Kontext generation with character consistency
+ * Requires a reference image of the character to maintain identity
+ */
+export interface GenerateKontextRequest {
+  /** Description of the scene/action (the character will be taken from reference) */
+  prompt: string;
+  /** URL of the reference image containing the character */
+  referenceImage: string;
+  aspectRatio?: AspectRatio;
+  /** Guidance scale 0-10 (default: 2.5 for subtle edits, higher for more changes) */
+  guidance?: number;
+  /** Inference steps 4-50 (default: 28, higher = better quality but slower) */
+  steps?: number;
+  seed?: number;
 }
 
 export interface GenerateImageResponse {
@@ -77,6 +96,10 @@ const FLUX_MODELS: Record<ReplicateProvider, `${string}/${string}:${string}`> = 
   'flux-pro': 'black-forest-labs/flux-2-pro:285631b5656a1839331cd9af0d82da820e2075db12046d1d061c681b2f206bc6',
 };
 
+// FLUX Kontext Dev - image-to-image model for character consistency
+// Uses reference image to maintain character identity across generations
+const FLUX_KONTEXT_MODEL = 'black-forest-labs/flux-kontext-dev:85723d503c17da3f9fd9cecfb9987a8bf60ef747fd8f68a25d7636f88260eb59';
+
 export class ImageGenerator {
   private replicate: Replicate;
   private runpod: RunPodProvider;
@@ -90,7 +113,7 @@ export class ImageGenerator {
 
     // Get default provider from env or use flux-dev
     const envProvider = process.env.IMAGE_PROVIDER as ImageProvider;
-    this.defaultProvider = ['flux-schnell', 'flux-dev', 'flux-pro', 'runpod-flux'].includes(envProvider)
+    this.defaultProvider = ['flux-schnell', 'flux-dev', 'flux-pro', 'runpod-flux', 'flux-kontext'].includes(envProvider)
       ? envProvider
       : 'flux-dev';
   }
@@ -124,6 +147,19 @@ export class ImageGenerator {
     // RunPod provider - use separate logic
     if (provider === 'runpod-flux') {
       return this.generateWithRunPod(request, aspectRatio);
+    }
+
+    // FLUX Kontext - requires reference image for character consistency
+    if (provider === 'flux-kontext') {
+      if (!request.referenceImage) {
+        throw new Error('FLUX Kontext requires a reference image (referenceImage parameter)');
+      }
+      return this.generateWithKontext({
+        prompt: request.prompt,
+        referenceImage: request.referenceImage,
+        aspectRatio,
+        seed: request.seed,
+      });
     }
 
     const input: Record<string, unknown> = {
@@ -213,6 +249,105 @@ export class ImageGenerator {
       aspectRatio,
       seed: request.seed,
     };
+  }
+
+  /**
+   * Generate image using FLUX Kontext Dev for character consistency
+   *
+   * FLUX Kontext takes a reference image and maintains the character's identity
+   * while placing them in new scenes/poses as described by the prompt.
+   *
+   * Best practices for prompts:
+   * - Describe the scene/action, not the character appearance
+   * - Reference the character with "the person" or similar
+   * - Example: "The person is running through a forest at sunset"
+   *
+   * @param request - Contains reference image and scene description
+   * @returns Generated image URL with consistent character
+   */
+  async generateWithKontext(request: GenerateKontextRequest): Promise<GenerateImageResponse> {
+    const aspectRatio = request.aspectRatio || '1:1';
+
+    console.log(`[ImageGenerator] FLUX Kontext: generating with reference image`);
+    console.log(`[ImageGenerator] Reference: "${request.referenceImage.substring(0, 80)}..."`);
+    console.log(`[ImageGenerator] Prompt: "${request.prompt.substring(0, 100)}..."`);
+
+    const input: Record<string, unknown> = {
+      prompt: request.prompt,
+      input_image: request.referenceImage,
+      aspect_ratio: aspectRatio,
+      output_format: 'webp',
+      output_quality: 95, // Higher quality for character details
+      // Optimal settings for character consistency
+      guidance: request.guidance ?? 2.5, // Low guidance = closer to reference
+      num_inference_steps: request.steps ?? 28, // Balance between quality and speed
+    };
+
+    if (request.seed !== undefined) {
+      input.seed = request.seed;
+    }
+
+    try {
+      const output = await this.replicate.run(FLUX_KONTEXT_MODEL as `${string}/${string}:${string}`, { input });
+
+      // Handle output format
+      let replicateUrl: string;
+      if (typeof output === 'string') {
+        replicateUrl = output;
+      } else if (Array.isArray(output) && output.length > 0) {
+        replicateUrl = output[0];
+      } else if (output && typeof output === 'object' && 'url' in output) {
+        replicateUrl = (output as { url: string }).url;
+      } else {
+        throw new Error('Unexpected output format from FLUX Kontext');
+      }
+
+      // Save locally to avoid URL expiration
+      const localUrl = await this.saveImageLocally(replicateUrl, request.prompt);
+
+      console.log(`[ImageGenerator] ✓ FLUX Kontext generated: ${localUrl}`);
+
+      return {
+        imageUrl: localUrl,
+        provider: 'flux-kontext',
+        aspectRatio,
+        seed: request.seed,
+      };
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error(`[ImageGenerator] ✗ FLUX Kontext failed: ${errorMessage}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Generate a character reference portrait for use with FLUX Kontext
+   *
+   * Creates a clean, well-lit portrait of the character that can be used
+   * as reference for all subsequent panel generations.
+   *
+   * @param characterDescription - Detailed description of the character
+   * @param style - Comic style to match (optional, defaults to realistic)
+   * @returns URL of the generated reference portrait
+   */
+  async generateCharacterReference(
+    characterDescription: string,
+    style?: string
+  ): Promise<string> {
+    const stylePrefix = style ? `${style} style, ` : '';
+    const prompt = `${stylePrefix}Portrait of ${characterDescription}. Clean background, good lighting, clear face details, professional portrait photo, looking at camera, neutral expression.`;
+
+    console.log(`[ImageGenerator] Generating character reference portrait...`);
+
+    const result = await this.generate({
+      prompt,
+      aspectRatio: '1:1', // Square portrait for best reference
+      provider: 'flux-dev', // Use high quality for reference
+    });
+
+    console.log(`[ImageGenerator] ✓ Character reference created: ${result.imageUrl}`);
+
+    return result.imageUrl;
   }
 
   /**
@@ -390,27 +525,37 @@ export class ImageGenerator {
   /**
    * Get available providers and their costs
    */
-  getProviderInfo(): Record<ImageProvider, { name: string; costPerImage: string; speed: string }> {
+  getProviderInfo(): Record<ImageProvider, { name: string; costPerImage: string; speed: string; description?: string }> {
     return {
       'flux-schnell': {
         name: 'Flux Schnell',
         costPerImage: '~$0.003',
         speed: 'Fast (~2s)',
+        description: 'Quick drafts, lower quality',
       },
       'flux-dev': {
         name: 'Flux Dev',
         costPerImage: '~$0.025',
         speed: 'Medium (~5s)',
+        description: 'Good balance of quality and speed',
       },
       'flux-pro': {
         name: 'Flux 1.1 Pro',
         costPerImage: '~$0.04',
         speed: 'Slow (~8s)',
+        description: 'Best quality, production use',
       },
       'runpod-flux': {
         name: 'RunPod Flux Dev',
         costPerImage: '~$0.003',
         speed: 'Medium (~5s) + cold start',
+        description: 'Cheapest option, parallel batch processing',
+      },
+      'flux-kontext': {
+        name: 'FLUX Kontext Dev',
+        costPerImage: '~$0.025',
+        speed: 'Medium (~8s)',
+        description: 'Character consistency (95%+) - requires reference image',
       },
     };
   }
