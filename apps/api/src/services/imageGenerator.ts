@@ -12,6 +12,7 @@ import fs from 'fs';
 import path from 'path';
 import { createHash } from 'crypto';
 import { RunPodProvider } from './runpodProvider';
+import { COMIC_STYLE_PROMPTS, ComicStyle } from '@kitsumy/types';
 
 dotenv.config();
 
@@ -272,9 +273,18 @@ export class ImageGenerator {
     console.log(`[ImageGenerator] Reference: "${request.referenceImage.substring(0, 80)}..."`);
     console.log(`[ImageGenerator] Prompt: "${request.prompt.substring(0, 100)}..."`);
 
+    // Convert local image to base64 data URL for Replicate
+    // Replicate can't access localhost URLs, so we need to send the image data directly
+    let imageInput: string = request.referenceImage;
+
+    if (request.referenceImage.includes('localhost') || request.referenceImage.startsWith('/')) {
+      imageInput = await this.convertToDataUrl(request.referenceImage);
+      console.log(`[ImageGenerator] Converted local image to data URL (${Math.round(imageInput.length / 1024)}KB)`);
+    }
+
     const input: Record<string, unknown> = {
       prompt: request.prompt,
-      input_image: request.referenceImage,
+      input_image: imageInput,
       aspect_ratio: aspectRatio,
       output_format: 'webp',
       output_quality: 95, // Higher quality for character details
@@ -326,21 +336,35 @@ export class ImageGenerator {
    * Creates a clean, well-lit portrait of the character that can be used
    * as reference for all subsequent panel generations.
    *
+   * IMPORTANT: The reference portrait style determines the style of all
+   * subsequent Kontext generations. If the reference is realistic,
+   * all panels will be realistic. If it's comic-style, panels will match.
+   *
    * @param characterDescription - Detailed description of the character
-   * @param style - Comic style to match (optional, defaults to realistic)
+   * @param style - Comic style to match (e.g., 'american-classic', 'manga', 'noir')
    * @returns URL of the generated reference portrait
    */
   async generateCharacterReference(
     characterDescription: string,
     style?: string
   ): Promise<string> {
-    const stylePrefix = style ? `${style} style, ` : '';
-    const prompt = `${stylePrefix}Portrait of ${characterDescription}. Clean background, good lighting, clear face details, professional portrait photo, looking at camera, neutral expression.`;
+    // Get full style prompts from COMIC_STYLE_PROMPTS for consistent comic look
+    // This is CRITICAL - if we don't use comic style here, Kontext will generate realistic images
+    const stylePrompts = style && COMIC_STYLE_PROMPTS[style as ComicStyle]
+      ? COMIC_STYLE_PROMPTS[style as ComicStyle]
+      : COMIC_STYLE_PROMPTS['american-classic']; // Default to American comic style
 
-    console.log(`[ImageGenerator] Generating character reference portrait...`);
+    // Build a prompt that creates a COMIC-STYLE portrait, not a realistic photo
+    const prompt = `${stylePrompts.prefix} character portrait, ${characterDescription}, facing forward, clear face details, simple clean background, good lighting, neutral expression, upper body shot, ${stylePrompts.suffix}`;
+
+    const negativePrompt = 'realistic photo, photorealistic, 3D render, photograph, blurry, text, watermark, deformed, ugly, bad anatomy';
+
+    console.log(`[ImageGenerator] Generating character reference portrait in ${style || 'american-classic'} style...`);
+    console.log(`[ImageGenerator] Prompt: "${prompt.substring(0, 150)}..."`);
 
     const result = await this.generate({
       prompt,
+      negativePrompt,
       aspectRatio: '1:1', // Square portrait for best reference
       provider: 'flux-dev', // Use high quality for reference
     });
@@ -348,6 +372,48 @@ export class ImageGenerator {
     console.log(`[ImageGenerator] ✓ Character reference created: ${result.imageUrl}`);
 
     return result.imageUrl;
+  }
+
+  /**
+   * Convert local image URL to base64 data URL
+   * Handles both localhost URLs and local file paths
+   */
+  private async convertToDataUrl(imageRef: string): Promise<string> {
+    let buffer: Buffer;
+    let mimeType = 'image/webp';
+
+    if (imageRef.includes('localhost')) {
+      // Extract filename from localhost URL
+      const filename = imageRef.split('/images/').pop();
+      if (!filename) {
+        throw new Error('Invalid localhost image URL');
+      }
+      const filepath = path.join(IMAGES_DIR, filename);
+
+      if (!fs.existsSync(filepath)) {
+        throw new Error(`Local image not found: ${filepath}`);
+      }
+
+      buffer = fs.readFileSync(filepath);
+
+      // Detect mime type from extension
+      if (filename.endsWith('.png')) mimeType = 'image/png';
+      else if (filename.endsWith('.jpg') || filename.endsWith('.jpeg')) mimeType = 'image/jpeg';
+    } else if (imageRef.startsWith('/')) {
+      // Direct file path
+      if (!fs.existsSync(imageRef)) {
+        throw new Error(`Image file not found: ${imageRef}`);
+      }
+      buffer = fs.readFileSync(imageRef);
+
+      if (imageRef.endsWith('.png')) mimeType = 'image/png';
+      else if (imageRef.endsWith('.jpg') || imageRef.endsWith('.jpeg')) mimeType = 'image/jpeg';
+    } else {
+      throw new Error('Unsupported image reference format');
+    }
+
+    const base64 = buffer.toString('base64');
+    return `data:${mimeType};base64,${base64}`;
   }
 
   /**

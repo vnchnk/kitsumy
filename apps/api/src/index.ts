@@ -153,7 +153,46 @@ app.post('/api/comic/generate-v2', async (request, reply) => {
 
     // Phase 2: Generate images for all panels
     if (!body.skipImages) {
-      console.log(`[generate-v2] Phase 2: Generating ${totalPanels} images...`);
+      // Store character reference images (for Kontext mode)
+      const characterReferences: Map<string, string> = new Map();
+
+      // Use Kontext mode when IMAGE_PROVIDER=flux-kontext in .env
+      const useKontextMode = process.env.IMAGE_PROVIDER === 'flux-kontext';
+
+      // Phase 2a: Generate character references if using Kontext
+      if (useKontextMode) {
+        console.log(`[generate-v2] Phase 2a: Generating ${plan.characters.length} character references for Kontext...`);
+
+        for (const character of plan.characters) {
+          try {
+            // Build detailed character description for reference portrait
+            const charDescription = `${character.age} year old ${character.gender}, ` +
+              `${character.bodyType} build, ${character.height}, ` +
+              `${character.skinTone} skin, ${character.face.hair}, ` +
+              `${character.face.eyes}, ${character.face.distinctiveFeatures || ''}, ` +
+              `wearing ${character.clothing}`;
+
+            console.log(`[generate-v2]   └─ ${character.id}: ${character.name}...`);
+
+            const refUrl = await imageGenerator.generateCharacterReference(
+              charDescription,
+              body.style.visual // Match comic style
+            );
+
+            characterReferences.set(character.id, refUrl);
+            console.log(`[generate-v2]   └─ ✓ ${character.id} reference: ${refUrl}`);
+
+            // Save reference URL to character object
+            (character as any).referenceImage = refUrl;
+          } catch (err: any) {
+            console.error(`[generate-v2]   └─ ✗ ${character.id} failed: ${err.message}`);
+          }
+        }
+
+        console.log(`[generate-v2] Phase 2a: ${characterReferences.size}/${plan.characters.length} character references created`);
+      }
+
+      console.log(`[generate-v2] Phase 2b: Generating ${totalPanels} panel images...`);
 
       // Collect all panels for batch generation
       const panelImages: Array<{
@@ -164,6 +203,7 @@ app.post('/api/comic/generate-v2', async (request, reply) => {
         chapterIdx: number;
         pageIdx: number;
         panelIdx: number;
+        referenceImage?: string; // For Kontext
       }> = [];
 
       for (let chIdx = 0; chIdx < plan.chapters.length; chIdx++) {
@@ -172,6 +212,17 @@ app.post('/api/comic/generate-v2', async (request, reply) => {
           const page = chapter.pages[pIdx];
           for (let panIdx = 0; panIdx < page.panels.length; panIdx++) {
             const panel = page.panels[panIdx];
+
+            // For Kontext: find the primary character's reference image
+            let referenceImage: string | undefined;
+            if (useKontextMode && panel.characters && panel.characters.length > 0) {
+              // Use the first main character (char-*) as reference
+              const mainCharId = panel.characters.find(c => c.characterId.startsWith('char-'))?.characterId;
+              if (mainCharId) {
+                referenceImage = characterReferences.get(mainCharId);
+              }
+            }
+
             panelImages.push({
               id: panel.id,
               prompt: panel.imagePrompt,
@@ -180,21 +231,73 @@ app.post('/api/comic/generate-v2', async (request, reply) => {
               chapterIdx: chIdx,
               pageIdx: pIdx,
               panelIdx: panIdx,
+              referenceImage,
             });
           }
         }
       }
 
-      // Generate images in batch
-      const batchResult = await imageGenerator.generateBatch({
-        images: panelImages.map(p => ({
-          id: p.id,
-          prompt: p.prompt,
-          negativePrompt: p.negativePrompt,
-          aspectRatio: p.aspectRatio,
-        })),
-        provider: body.imageProvider,
-      });
+      // Generate images - use Kontext if enabled, otherwise batch
+      let batchResult;
+      if (useKontextMode) {
+        // Kontext mode: generate sequentially with reference images
+        console.log(`[generate-v2] Using FLUX Kontext for character consistency...`);
+        const results: Array<{ id: string; imageUrl: string; success: boolean; error?: string }> = [];
+
+        for (let i = 0; i < panelImages.length; i++) {
+          const p = panelImages[i];
+          console.log(`[generate-v2] Panel ${i + 1}/${panelImages.length}: ${p.id}`);
+
+          try {
+            if (p.referenceImage) {
+              // Use Kontext with reference
+              const result = await imageGenerator.generate({
+                prompt: p.prompt,
+                referenceImage: p.referenceImage,
+                aspectRatio: p.aspectRatio,
+                provider: 'flux-kontext',
+              });
+              results.push({ id: p.id, imageUrl: result.imageUrl, success: true });
+            } else {
+              // No main character - use regular provider (no reference needed)
+              const result = await imageGenerator.generate({
+                prompt: p.prompt,
+                negativePrompt: p.negativePrompt,
+                aspectRatio: p.aspectRatio,
+                provider: body.imageProvider || 'flux-dev',
+              });
+              results.push({ id: p.id, imageUrl: result.imageUrl, success: true });
+            }
+          } catch (err: any) {
+            console.error(`[generate-v2] ✗ ${p.id}: ${err.message}`);
+            results.push({ id: p.id, imageUrl: '', success: false, error: err.message });
+          }
+
+          // Rate limit delay for Replicate (12s between requests)
+          if (i < panelImages.length - 1) {
+            console.log(`[generate-v2] Waiting 12s for rate limit...`);
+            await new Promise(r => setTimeout(r, 12000));
+          }
+        }
+
+        batchResult = {
+          results,
+          provider: 'flux-kontext' as ImageProvider,
+          totalGenerated: results.filter(r => r.success).length,
+          totalFailed: results.filter(r => !r.success).length,
+        };
+      } else {
+        // Standard batch mode (RunPod or Replicate)
+        batchResult = await imageGenerator.generateBatch({
+          images: panelImages.map(p => ({
+            id: p.id,
+            prompt: p.prompt,
+            negativePrompt: p.negativePrompt,
+            aspectRatio: p.aspectRatio,
+          })),
+          provider: body.imageProvider,
+        });
+      }
 
       // Update panels with generated image URLs
       for (const result of batchResult.results) {
