@@ -11,6 +11,7 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
 import { createHash } from 'crypto';
+import { RunPodProvider } from './runpodProvider';
 
 dotenv.config();
 
@@ -25,7 +26,7 @@ if (!fs.existsSync(IMAGES_DIR)) {
   fs.mkdirSync(IMAGES_DIR, { recursive: true });
 }
 
-export type ImageProvider = 'flux-schnell' | 'flux-dev' | 'flux-pro';
+export type ImageProvider = 'flux-schnell' | 'flux-dev' | 'flux-pro' | 'runpod-flux';
 export type AspectRatio = '1:1' | '16:9' | '9:16' | '4:3' | '3:4' | '3:2' | '2:3';
 
 export interface GenerateImageRequest {
@@ -66,8 +67,11 @@ export interface GenerateBatchResponse {
   totalFailed: number;
 }
 
+// Replicate providers (excludes runpod-flux which uses RunPod API)
+type ReplicateProvider = 'flux-schnell' | 'flux-dev' | 'flux-pro';
+
 // Model IDs for different Flux versions (with version hashes)
-const FLUX_MODELS: Record<ImageProvider, `${string}/${string}:${string}`> = {
+const FLUX_MODELS: Record<ReplicateProvider, `${string}/${string}:${string}`> = {
   'flux-schnell': 'black-forest-labs/flux-schnell:c846a69991daf4c0e5d016514849d14ee5b2e6846ce6b9d6f21369e564cfe51e',
   'flux-dev': 'black-forest-labs/flux-dev:6e4a938f85952bdabcc15aa329178c4d681c52bf25a0342403287dc26944661d',
   'flux-pro': 'black-forest-labs/flux-2-pro:285631b5656a1839331cd9af0d82da820e2075db12046d1d061c681b2f206bc6',
@@ -75,16 +79,18 @@ const FLUX_MODELS: Record<ImageProvider, `${string}/${string}:${string}`> = {
 
 export class ImageGenerator {
   private replicate: Replicate;
+  private runpod: RunPodProvider;
   private defaultProvider: ImageProvider;
 
   constructor() {
     this.replicate = new Replicate({
       auth: process.env.REPLICATE_API_TOKEN || '',
     });
+    this.runpod = new RunPodProvider();
 
     // Get default provider from env or use flux-dev
     const envProvider = process.env.IMAGE_PROVIDER as ImageProvider;
-    this.defaultProvider = ['flux-schnell', 'flux-dev', 'flux-pro'].includes(envProvider)
+    this.defaultProvider = ['flux-schnell', 'flux-dev', 'flux-pro', 'runpod-flux'].includes(envProvider)
       ? envProvider
       : 'flux-dev';
   }
@@ -92,12 +98,33 @@ export class ImageGenerator {
   /**
    * Generate a single image
    */
+  /**
+   * Convert aspect ratio to width/height
+   */
+  private aspectRatioToDimensions(aspectRatio: AspectRatio): { width: number; height: number } {
+    const dimensions: Record<AspectRatio, { width: number; height: number }> = {
+      '1:1': { width: 1024, height: 1024 },
+      '16:9': { width: 1344, height: 768 },
+      '9:16': { width: 768, height: 1344 },
+      '4:3': { width: 1152, height: 896 },
+      '3:4': { width: 896, height: 1152 },
+      '3:2': { width: 1216, height: 832 },
+      '2:3': { width: 832, height: 1216 },
+    };
+    return dimensions[aspectRatio] || dimensions['1:1'];
+  }
+
   async generate(request: GenerateImageRequest): Promise<GenerateImageResponse> {
     const provider = request.provider || this.defaultProvider;
     const aspectRatio = request.aspectRatio || '1:1';
 
     console.log(`[ImageGenerator] Generating image with ${provider}, aspect: ${aspectRatio}`);
     console.log(`[ImageGenerator] Prompt: "${request.prompt.substring(0, 100)}..."`);
+
+    // RunPod provider - use separate logic
+    if (provider === 'runpod-flux') {
+      return this.generateWithRunPod(request, aspectRatio);
+    }
 
     const input: Record<string, unknown> = {
       prompt: request.prompt,
@@ -131,7 +158,7 @@ export class ImageGenerator {
     }
 
     try {
-      const output = await this.replicate.run(FLUX_MODELS[provider], { input });
+      const output = await this.replicate.run(FLUX_MODELS[provider as keyof typeof FLUX_MODELS], { input });
 
       // Handle different output formats
       let replicateUrl: string;
@@ -161,6 +188,31 @@ export class ImageGenerator {
       console.error(`[ImageGenerator] ✗ Failed: ${errorMessage}`);
       throw error;
     }
+  }
+
+  /**
+   * Generate image using RunPod Serverless
+   */
+  private async generateWithRunPod(
+    request: GenerateImageRequest,
+    aspectRatio: AspectRatio
+  ): Promise<GenerateImageResponse> {
+    const { width, height } = this.aspectRatioToDimensions(aspectRatio);
+
+    const imageUrl = await this.runpod.generate({
+      prompt: request.prompt,
+      negativePrompt: request.negativePrompt,
+      width,
+      height,
+      seed: request.seed,
+    });
+
+    return {
+      imageUrl,
+      provider: 'runpod-flux',
+      aspectRatio,
+      seed: request.seed,
+    };
   }
 
   /**
@@ -246,10 +298,18 @@ export class ImageGenerator {
   }
 
   /**
-   * Generate multiple images SEQUENTIALLY (to respect strict rate limits)
+   * Generate multiple images (PARALLEL for RunPod, SEQUENTIAL for Replicate)
    */
-  async generateBatch(request: GenerateBatchRequest): Promise<GenerateBatchResponse> {
+  async generateBatch(
+    request: GenerateBatchRequest,
+    onProgress?: (current: number, total: number, status: string) => void
+  ): Promise<GenerateBatchResponse> {
     const provider = request.provider || this.defaultProvider;
+
+    // RunPod: use parallel batch generation with endpoint lifecycle
+    if (provider === 'runpod-flux') {
+      return this.generateBatchWithRunPod(request, onProgress);
+    }
 
     console.log(`[ImageGenerator] Batch: ${request.images.length} images with ${provider} (sequential mode)`);
 
@@ -259,6 +319,7 @@ export class ImageGenerator {
     for (let i = 0; i < request.images.length; i++) {
       const img = request.images[i];
       console.log(`[ImageGenerator] Processing ${i + 1}/${request.images.length}: ${img.id}`);
+      onProgress?.(i, request.images.length, `Generating image ${i + 1}/${request.images.length}...`);
 
       const result = await this.generateWithRetry(img, provider);
       results.push(result);
@@ -284,6 +345,49 @@ export class ImageGenerator {
   }
 
   /**
+   * Generate batch using RunPod Serverless (PARALLEL, no rate limits!)
+   */
+  private async generateBatchWithRunPod(
+    request: GenerateBatchRequest,
+    onProgress?: (current: number, total: number, status: string) => void
+  ): Promise<GenerateBatchResponse> {
+    console.log(`[ImageGenerator] Batch: ${request.images.length} images with runpod-flux (parallel mode)`);
+
+    const runpodRequests = request.images.map(img => {
+      const { width, height } = this.aspectRatioToDimensions(img.aspectRatio || '1:1');
+      return {
+        id: img.id,
+        prompt: img.prompt,
+        negativePrompt: img.negativePrompt,
+        width,
+        height,
+        seed: img.seed,
+      };
+    });
+
+    const runpodResults = await this.runpod.generateBatch(runpodRequests, onProgress);
+
+    const results = runpodResults.map(r => ({
+      id: r.id,
+      imageUrl: r.imageUrl,
+      success: r.success,
+      error: r.error,
+    }));
+
+    const totalGenerated = results.filter(r => r.success).length;
+    const totalFailed = results.filter(r => !r.success).length;
+
+    console.log(`[ImageGenerator] Batch complete: ${totalGenerated} success, ${totalFailed} failed`);
+
+    return {
+      results,
+      provider: 'runpod-flux',
+      totalGenerated,
+      totalFailed,
+    };
+  }
+
+  /**
    * Get available providers and their costs
    */
   getProviderInfo(): Record<ImageProvider, { name: string; costPerImage: string; speed: string }> {
@@ -302,6 +406,11 @@ export class ImageGenerator {
         name: 'Flux 1.1 Pro',
         costPerImage: '~$0.04',
         speed: 'Slow (~8s)',
+      },
+      'runpod-flux': {
+        name: 'RunPod Flux Dev',
+        costPerImage: '~$0.003',
+        speed: 'Medium (~5s) + cold start',
       },
     };
   }
