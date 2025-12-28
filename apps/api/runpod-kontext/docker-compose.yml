@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  kontext-worker:
+    build: .
+    ports:
+      - "8188:8188"  # ComfyUI web interface
+      - "8000:8000"  # RunPod handler API
+    environment:
+      - SERVE_API_LOCALLY=true
+    volumes:
+      - ./test_images:/comfyui/input
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
