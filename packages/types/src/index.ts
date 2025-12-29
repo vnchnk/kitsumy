@@ -140,38 +140,12 @@ export const COMIC_STYLE_PROMPTS: Record<ComicStyle, StylePrompt> = {
   },
 };
 
-export const COMIC_SETTING_PROMPTS: Record<ComicSetting, string> = {
-  'realistic': 'realistic setting, contemporary, grounded in reality',
-  'sci-fi': 'science fiction, futuristic technology, space, advanced civilization',
-  'cyberpunk': 'cyberpunk setting, dystopian future, neon, cybernetic implants, megacities',
-  'fantasy': 'fantasy setting, magic, medieval, mythical creatures, enchanted',
-  'steampunk': 'steampunk setting, Victorian era, brass gears, steam-powered machinery',
-  'supernatural': 'supernatural setting, ghosts, vampires, demons, paranormal',
-  'post-apocalyptic': 'post-apocalyptic setting, wasteland, ruins, survival, desolation',
-};
-
 // ============================================
 // Comic Planner Types
 // ============================================
 
-// Візуальний стиль (як малювати) - переіменовуємо ComicStyle
+// Візуальний стиль (як малювати)
 export type ComicVisualStyle = ComicStyle;
-
-// Сеттінг світу (який світ)
-export type ComicSetting =
-  | 'realistic'          // За замовчуванням — без фантастики
-  | 'sci-fi'             // Космос, технології майбутнього
-  | 'cyberpunk'          // Кіберімпланти, неон, dystopia
-  | 'fantasy'            // Магія, дракони, ельфи
-  | 'steampunk'          // Вікторіанська епоха + технології
-  | 'supernatural'       // Привиди, вампіри, демони
-  | 'post-apocalyptic';  // Після катастрофи
-
-// Об'єднаний стиль
-export interface ComicStyleConfig {
-  visual: ComicVisualStyle;       // Як малювати (noir, manga, etc.)
-  setting?: ComicSetting;         // Який світ (default: 'realistic')
-}
 
 // Доступні темплейти сторінок (з TemplatesPanel.tsx)
 export type PageLayout =
@@ -283,7 +257,7 @@ export const LAYOUT_SLOTS: Record<PageLayout, LayoutSlot[]> = {
 // Запит на планування коміксу
 export interface ComicPlanRequest {
   prompt: string;
-  style: ComicStyleConfig;    // { visual: 'noir', setting: 'realistic' }
+  style: ComicVisualStyle;    // 'noir', 'manga', etc.
   maxPages?: number;          // 1-20, default: 5
   language?: 'uk' | 'en';     // default: 'uk'
 }
@@ -441,16 +415,8 @@ export interface ComicChapter {
 export interface ComicPlan {
   id: string;
   title: string;
-  style: ComicStyleConfig;    // { visual, setting }
+  style: ComicVisualStyle;    // 'noir', 'manga', etc.
   characters: ComicCharacter[];
   chapters: ComicChapter[];
   createdAt: string;
 }
-
-// Відповідь планування
-export interface ComicPlanResponse {
-  success: boolean;
-  plan?: ComicPlan;
-  error?: string;
-}
-

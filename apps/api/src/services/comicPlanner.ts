@@ -19,9 +19,7 @@ import {
   FacialExpression,
   PanelDialogue,
   ComicStyle,
-  ComicSetting,
   COMIC_STYLE_PROMPTS,
-  COMIC_SETTING_PROMPTS,
 } from '@kitsumy/types';
 import dotenv from 'dotenv';
 
@@ -143,17 +141,12 @@ const reviewSchema = z.object({
   overallQuality: z.enum(['good', 'needs_fixes', 'poor']),
 });
 
-// Style prompts imported from @kitsumy/types: COMIC_STYLE_PROMPTS, COMIC_SETTING_PROMPTS
 // Helper to get style prompts with fallback for unknown styles
 const getStylePrompts = (style: string) => {
   return COMIC_STYLE_PROMPTS[style as ComicStyle] || {
     prefix: 'comic book panel illustration,',
     suffix: 'professional comic art style'
   };
-};
-
-const getSettingPrompt = (setting: string) => {
-  return COMIC_SETTING_PROMPTS[setting as ComicSetting] || '';
 };
 
 // ============================================
@@ -374,14 +367,13 @@ export class ComicPlanner {
   async createPlan(request: ComicPlanRequest): Promise<ComicPlan> {
     const maxPages = Math.min(Math.max(1, request.maxPages || 5), 20);
     const language = request.language || 'uk';
-    const visualStyle = request.style.visual;
-    const worldSetting = request.style.setting || 'realistic';
+    const visualStyle = request.style;
 
-    log(`[PLANNER] Starting: "${request.prompt}" (${maxPages} pages, ${visualStyle}/${worldSetting})`);
+    log(`[PLANNER] Starting: "${request.prompt}" (${maxPages} pages, ${visualStyle})`);
 
     // --- PHASE 1: Generate Characters (Fast Model) ---
     log(`[PLANNER] Phase 1: Characters (Gemini-Flash)...`);
-    const characters = await this.generateCharacters(request.prompt, visualStyle, worldSetting);
+    const characters = await this.generateCharacters(request.prompt, visualStyle);
     log(`[PLANNER] Created ${characters.length} characters`);
 
     // --- PHASE 2: Generate Structure (Fast Model) ---
@@ -397,8 +389,7 @@ export class ComicPlanner {
       structureResult,
       maxPages,
       language,
-      visualStyle,
-      worldSetting
+      visualStyle
     );
 
     // --- PHASE 4: Self-Review (Smart Model) ---
@@ -428,19 +419,11 @@ export class ComicPlanner {
 
   private async generateCharacters(
     prompt: string,
-    visualStyle: string,
-    worldSetting: string
+    visualStyle: string
   ): Promise<ComicCharacter[]> {
     const characterPrompt = `Create 2-5 characters for a comic about: ${prompt}
 
 VISUAL STYLE: ${visualStyle} (art style only)
-WORLD SETTING: ${worldSetting}
-
-Rules for "${worldSetting}" setting:
-- "realistic": 100% realistic. NO sci-fi, NO fantasy. Historical accuracy required.
-- "cyberpunk"/"sci-fi": Futuristic tech allowed.
-- "fantasy": Magic allowed.
-- "supernatural": Ghosts/vampires allowed.
 
 IMPORTANT: Use ONLY plain text. NO special characters like quotes or double quotes inside values.
 
@@ -586,8 +569,7 @@ Return JSON:
     structureResult: z.infer<typeof structureSchema>,
     maxPages: number,
     language: string,
-    visualStyle: string,
-    worldSetting: string
+    visualStyle: string
   ): Promise<ComicChapter[]> {
     // Збираємо всі сторінки з глобальним контекстом
     const allPagePlans: Array<{
@@ -652,7 +634,6 @@ Return JSON:
           this.generateSinglePanelParallel(
             request.prompt,
             visualStyle,
-            worldSetting,
             scene,
             pagePlan.summary,
             thinking,
@@ -787,7 +768,6 @@ Analyze and return your thinking:
   private async generateSinglePanelParallel(
     storyPrompt: string,
     visualStyle: string,
-    worldSetting: string,
     scene: { location: string; weather?: string; timeOfDay?: string; atmosphere?: string },
     pageSummary: string,
     thinking: z.infer<typeof pageThinkingSchema>,
@@ -850,7 +830,6 @@ Analyze and return your thinking:
 
     // Get style prompts for image generation
     const stylePrompts = getStylePrompts(visualStyle);
-    const settingPrompt = getSettingPrompt(worldSetting);
 
     // Build detailed character descriptions for imagePrompt
     const charDescriptionsForImage = mainCharsInScene.map(c =>
@@ -863,7 +842,6 @@ Analyze and return your thinking:
 
 STORY: ${storyPrompt}
 VISUAL STYLE: ${visualStyle}
-SETTING: ${worldSetting}
 PAGE SUMMARY: ${pageSummary}
 SCENE: ${scene.location}${scene.weather ? `, ${scene.weather}` : ''}${scene.timeOfDay ? `, ${scene.timeOfDay}` : ''}
 
@@ -894,7 +872,7 @@ IMAGE PROMPT RULES (for Flux image generation - CRITICAL FOR CONSISTENCY):
 8. START the prompt with: "${stylePrompts.prefix}"
 9. Then include: camera shot, angle, character appearances (EXACT physical details from DETAILED CHARACTER APPEARANCES), poses, expressions, location, atmosphere
 10. ADD TO EVERY imagePrompt: "no text, no speech bubbles, no captions, no letters, no words, clean image without any text overlays"
-11. END the prompt with: "${stylePrompts.suffix}"${settingPrompt ? `, ${settingPrompt}` : ''}
+11. END the prompt with: "${stylePrompts.suffix}"
 12. "negativePrompt" MUST include: "text, letters, words, speech bubbles, dialogue bubbles, captions, subtitles, writing, typography, watermark, signature, realistic photo, photorealistic, 3D render, photograph, blurry"
 
 COMPOSITION RULES FOR TEXT PLACEMENT (CRITICAL - Flux must leave empty areas):

@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
 import { ComicPlanner } from './services/comicPlanner.js';
-import { ComicPlanRequest, ComicStyleConfig, ComicStyle, ComicSetting } from '@kitsumy/types';
+import { ComicPlanRequest, ComicVisualStyle } from '@kitsumy/types';
 import fs from 'fs';
 import path from 'path';
 import { imageGenerator, ImageProvider, AspectRatio } from './services/imageGenerator.js';
@@ -34,11 +34,11 @@ if (!fs.existsSync(PLANS_DIR)) {
 app.post('/api/comic/generate', async (request, reply) => {
   const body = request.body as {
     prompt: string;
-    style: { visual: ComicStyle; setting?: ComicSetting };
+    style: ComicVisualStyle;  // 'noir', 'manga', etc.
     maxPages?: number;
     language?: 'uk' | 'en';
     imageProvider?: ImageProvider;
-    skipImages?: boolean; // Skip image generation (for testing)
+    skipImages?: boolean;
   };
 
   // Validate required fields
@@ -49,22 +49,17 @@ app.post('/api/comic/generate', async (request, reply) => {
     });
   }
 
-  if (!body.style || !body.style.visual) {
+  if (!body.style) {
     return reply.status(400).send({
       success: false,
-      error: 'Missing required field: style.visual (e.g., { visual: "noir", setting: "realistic" })'
+      error: 'Missing required field: style (e.g., "noir", "manga")'
     });
   }
 
   try {
-    const styleConfig: ComicStyleConfig = {
-      visual: body.style.visual,
-      setting: body.style.setting || 'realistic',
-    };
-
     const planRequest: ComicPlanRequest = {
       prompt: body.prompt,
-      style: styleConfig,
+      style: body.style,
       maxPages: body.maxPages,
       language: body.language,
     };
@@ -108,7 +103,7 @@ app.post('/api/comic/generate', async (request, reply) => {
 
             const refUrl = await imageGenerator.generateCharacterReference(
               charDescription,
-              body.style.visual // Match comic style
+              body.style // Match comic style
             );
 
             characterReferences.set(character.id, refUrl);

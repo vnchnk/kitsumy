@@ -69,7 +69,7 @@ export const AIGeneratorPanel = () => {
     try {
       const requestBody = {
         prompt: prompt.trim(),
-        style: { visual: style, setting: 'realistic' },
+        style,
         maxPages: maxPages,
       };
 
