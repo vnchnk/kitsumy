@@ -675,6 +675,3 @@ export class RunPodProvider {
     };
   }
 }
-
-// Export singleton instance
-export const runpodProvider = new RunPodProvider();

@@ -167,16 +167,6 @@ export type ComicSetting =
   | 'supernatural'       // Привиди, вампіри, демони
   | 'post-apocalyptic';  // Після катастрофи
 
-export const COMIC_SETTING_NAMES: Record<ComicSetting, string> = {
-  'realistic': 'Realistic',
-  'sci-fi': 'Sci-Fi',
-  'cyberpunk': 'Cyberpunk',
-  'fantasy': 'Fantasy',
-  'steampunk': 'Steampunk',
-  'supernatural': 'Supernatural',
-  'post-apocalyptic': 'Post-Apocalyptic',
-};
-
 // Об'єднаний стиль
 export interface ComicStyleConfig {
   visual: ComicVisualStyle;       // Як малювати (noir, manga, etc.)

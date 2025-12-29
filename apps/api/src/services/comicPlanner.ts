@@ -37,7 +37,6 @@ const log = (message: string) => {
 // ============================================
 
 const bodyTypes: BodyType[] = ['slim', 'average', 'athletic', 'muscular', 'heavy', 'petite'];
-const expressions: FacialExpression[] = ['neutral', 'happy', 'sad', 'angry', 'fearful', 'surprised', 'disgusted', 'contempt', 'determined', 'worried', 'pensive', 'smirking', 'crying', 'laughing', 'focused', 'confused', 'shocked', 'relieved', 'hopeful', 'anxious'];
 
 const characterSchema = z.object({
   characters: z.array(z.object({

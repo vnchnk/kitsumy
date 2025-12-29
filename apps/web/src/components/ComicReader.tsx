@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 export const ComicReader = ({ comic }: { comic: any }) => {
   if (!comic) return null;
 
-  const getRandomClip = (_i: number) => {
+  const getRandomClip = () => {
     const v = [
         `0% ${Math.random() * 2}%`,
         `${98 + Math.random() * 2}% ${Math.random() * 1}%`,
@@ -62,7 +62,7 @@ export const ComicReader = ({ comic }: { comic: any }) => {
               animate={{ opacity: 1, scale: 1, rotate: (idx % 2 === 0 ? -0.5 : 0.5) }} // Subtle rotation
               transition={{ delay: idx * 0.1 }}
               className={`relative bg-white border-[4px] border-black overflow-hidden group shadow-xl ${colSpan} ${heightClass}`}
-              style={{ clipPath: getRandomClip(idx) }}
+              style={{ clipPath: getRandomClip() }}
             >
               {/* Image Layer */}
               <div className="absolute inset-0 bg-gray-800">
