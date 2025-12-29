@@ -1,16 +1,14 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
-import { Orchestrator } from './services/orchestrator.js';
 import { ComicPlanner } from './services/comicPlanner.js';
-import { AppMode, ComicPlanRequest, ComicStyleConfig, ComicStyle, ComicSetting } from '@kitsumy/types';
+import { ComicPlanRequest, ComicStyleConfig, ComicStyle, ComicSetting } from '@kitsumy/types';
 import fs from 'fs';
 import path from 'path';
 import { textPlacer, TextBlock } from './services/textPlacer.js';
 import { imageGenerator, ImageProvider, AspectRatio } from './services/imageGenerator.js';
 
 const app = Fastify({ logger: false });
-const orchestrator = new Orchestrator();
 const comicPlanner = new ComicPlanner();
 
 app.register(cors, { origin: '*' });
@@ -23,25 +21,6 @@ if (!fs.existsSync(PUBLIC_DIR)) {
 app.register(fastifyStatic, {
   root: PUBLIC_DIR,
   prefix: '/',
-});
-
-// Legacy endpoint - generates comic with images
-app.post('/generate', async (request, reply) => {
-  const body = request.body as any;
-
-  try {
-    const result = await orchestrator.dispatch({
-      mode: body.mode || AppMode.LEARNING,
-      prompt: body.prompt,
-      style: body.style,
-      maxPages: body.maxPages,
-      userContext: body.userContext || {}
-    });
-    return { success: true, data: result };
-  } catch (err) {
-    app.log.error(err);
-    return reply.status(500).send({ error: 'Generation failed' });
-  }
 });
 
 // Plans directory for saving generated plans
