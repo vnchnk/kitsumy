@@ -3,6 +3,7 @@ import { OmniInput } from './components/OmniInput';
 import { ComicReader } from './components/ComicReader';
 import { useSession } from './store/useSession';
 import { AppMode, ComicStyle, COMIC_STYLE_NAMES } from '@kitsumy/types';
+import { API_BASE_URL } from './config';
 
 const STYLES: ComicStyle[] = [
   'american-classic',
@@ -36,7 +37,7 @@ function App() {
   const handleGenerate = async (prompt: string) => {
     setIsLoading(true);
     try {
-      const res = await fetch('http://localhost:3001/api/comic/generate', {
+      const res = await fetch(`${API_BASE_URL}/api/comic/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -48,7 +49,7 @@ function App() {
       const json = await res.json();
       if (json.success) {
         // Fetch the full plan by planId
-        const planRes = await fetch(`http://localhost:3001/api/comic/plan/${json.planId}`);
+        const planRes = await fetch(`${API_BASE_URL}/api/comic/plan/${json.planId}`);
         const planJson = await planRes.json();
         if (planJson.success) {
           setComicData(planJson.plan);

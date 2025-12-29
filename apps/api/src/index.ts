@@ -306,10 +306,12 @@ app.get('/api/comic/plan/:id', async (request, reply) => {
   }
 });
 
+const PORT = parseInt(process.env.PORT!, 10);
+
 const start = async () => {
   try {
-    await app.listen({ port: 3001 });
-    console.log('Server running on http://localhost:3001');
+    await app.listen({ port: PORT });
+    console.log(`Server running on http://localhost:${PORT}`);
   } catch (err) {
     process.exit(1);
   }

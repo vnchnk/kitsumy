@@ -20,7 +20,7 @@ dotenv.config();
 const IMAGES_DIR = path.join(process.cwd(), 'public', 'images');
 
 // API base URL for serving images
-const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3001';
+const API_BASE_URL = process.env.API_BASE_URL!;
 
 // Ensure images directory exists
 if (!fs.existsSync(IMAGES_DIR)) {

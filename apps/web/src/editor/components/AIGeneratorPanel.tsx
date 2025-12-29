@@ -8,6 +8,7 @@ import {
   constrainBubblePosition,
   distributeBubbles,
 } from '../utils/textMeasure';
+import { API_BASE_URL } from '../../config';
 
 const STYLES: ComicStyle[] = [
   'american-classic',
@@ -72,7 +73,7 @@ export const AIGeneratorPanel = () => {
         maxPages: maxPages,
       };
 
-      const response = await fetch('http://localhost:3001/api/comic/generate', {
+      const response = await fetch(`${API_BASE_URL}/api/comic/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody),
@@ -89,7 +90,7 @@ export const AIGeneratorPanel = () => {
       }
 
       // Fetch the full plan
-      const planRes = await fetch(`http://localhost:3001/api/comic/plan/${result.planId}`);
+      const planRes = await fetch(`${API_BASE_URL}/api/comic/plan/${result.planId}`);
       const planJson = await planRes.json();
 
       if (!planJson.success || !planJson.plan) {
