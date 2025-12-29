@@ -37,7 +37,7 @@ const log = (message: string) => {
 // ============================================
 
 const bodyTypes: BodyType[] = ['slim', 'average', 'athletic', 'muscular', 'heavy', 'petite'];
-const expressions: FacialExpression[] = ['neutral', 'happy', 'sad', 'angry', 'fearful', 'surprised', 'disgusted', 'contempt', 'determined', 'worried', 'pensive', 'smirking', 'crying', 'laughing', 'focused', 'confused', 'shocked', 'relieved', 'hopeful'];
+const expressions: FacialExpression[] = ['neutral', 'happy', 'sad', 'angry', 'fearful', 'surprised', 'disgusted', 'contempt', 'determined', 'worried', 'pensive', 'smirking', 'crying', 'laughing', 'focused', 'confused', 'shocked', 'relieved', 'hopeful', 'anxious'];
 
 const characterSchema = z.object({
   characters: z.array(z.object({
@@ -55,7 +55,7 @@ const characterSchema = z.object({
       distinctiveFeatures: z.string(),
     }),
     skinTone: z.string(),
-    defaultExpression: z.enum(expressions as [string, ...string[]]),
+    defaultExpression: z.string(),  // Free-form expression (e.g. "anxious", "determined", etc.)
     clothing: z.string(),
     role: z.string(),
   }))

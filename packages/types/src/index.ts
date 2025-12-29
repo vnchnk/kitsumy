@@ -332,7 +332,8 @@ export type FacialExpression =
   | 'neutral' | 'happy' | 'sad' | 'angry' | 'fearful'
   | 'surprised' | 'disgusted' | 'contempt' | 'determined'
   | 'worried' | 'pensive' | 'smirking' | 'crying' | 'laughing'
-  | 'focused' | 'confused' | 'shocked' | 'relieved' | 'hopeful';
+  | 'focused' | 'confused' | 'shocked' | 'relieved' | 'hopeful'
+  | 'anxious';
 
 // Персонаж коміксу
 export interface ComicCharacter {
@@ -356,7 +357,7 @@ export interface ComicCharacter {
   };
 
   skinTone: string;         // "olive", "pale", "dark brown"
-  defaultExpression: FacialExpression;
+  defaultExpression: string;  // Free-form expression (e.g. "anxious", "determined")
 
   clothing: string;         // Одяг за замовчуванням
   role: string;             // Роль в історії

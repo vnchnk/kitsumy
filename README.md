@@ -58,7 +58,7 @@ kitsumy/
     ```
 
 4.  **Run Development Server**
-    Starts both API (3001) and Web (3000) concurrently:
+    Starts both API (4101) and Web (4100) concurrently:
     ```bash
     npm run dev
     ```

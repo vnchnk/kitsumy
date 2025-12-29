@@ -79,13 +79,28 @@ interface StatusResponse {
   error?: string;
 }
 
+export interface RunPodKontextOptions {
+  prompt: string;
+  /** Optional: Base64 image data for image-to-image editing (not yet implemented) */
+  referenceImage?: string;
+  width?: number;
+  height?: number;
+  seed?: number;
+  /** CFG scale (default: 1.0 for FLUX) */
+  guidance?: number;
+  /** Inference steps (default: 20) */
+  steps?: number;
+}
+
 export class RunPodProvider {
   private apiKey: string;
   private endpointId: string;
+  private kontextEndpointId: string;
 
-  constructor(apiKey?: string, endpointId?: string) {
+  constructor(apiKey?: string, endpointId?: string, kontextEndpointId?: string) {
     this.apiKey = apiKey || process.env.RUNPOD_API_KEY || '';
     this.endpointId = endpointId || process.env.RUNPOD_ENDPOINT_ID || '';
+    this.kontextEndpointId = kontextEndpointId || process.env.RUNPOD_KONTEXT_ENDPOINT_ID || '';
 
     if (!this.apiKey) {
       console.warn('[RunPod] No API key. Set RUNPOD_API_KEY in .env');
@@ -94,6 +109,13 @@ export class RunPodProvider {
       console.warn('[RunPod] No endpoint ID. Set RUNPOD_ENDPOINT_ID in .env');
       console.warn('[RunPod] Create endpoint at: https://runpod.io/console/serverless');
     }
+  }
+
+  /**
+   * Check if Kontext endpoint is configured
+   */
+  isKontextConfigured(): boolean {
+    return !!(this.apiKey && this.kontextEndpointId);
   }
 
   /**
@@ -106,8 +128,9 @@ export class RunPodProvider {
   /**
    * Run job synchronously (waits for completion)
    */
-  private async runSync(input: unknown, timeoutMs = 120000): Promise<RunSyncResponse> {
-    const url = `${RUNPOD_AI_API}/${this.endpointId}/runsync`;
+  private async runSync(input: unknown, timeoutMs = 120000, endpointId?: string): Promise<RunSyncResponse> {
+    const endpoint = endpointId || this.endpointId;
+    const url = `${RUNPOD_AI_API}/${endpoint}/runsync`;
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -143,8 +166,9 @@ export class RunPodProvider {
   /**
    * Run job asynchronously
    */
-  private async runAsync(input: unknown): Promise<string> {
-    const url = `${RUNPOD_AI_API}/${this.endpointId}/run`;
+  private async runAsync(input: unknown, endpointId?: string): Promise<string> {
+    const endpoint = endpointId || this.endpointId;
+    const url = `${RUNPOD_AI_API}/${endpoint}/run`;
 
     const response = await fetch(url, {
       method: 'POST',
@@ -167,8 +191,9 @@ export class RunPodProvider {
   /**
    * Check job status
    */
-  private async getStatus(jobId: string): Promise<StatusResponse> {
-    const url = `${RUNPOD_AI_API}/${this.endpointId}/status/${jobId}`;
+  private async getStatus(jobId: string, endpointId?: string): Promise<StatusResponse> {
+    const endpoint = endpointId || this.endpointId;
+    const url = `${RUNPOD_AI_API}/${endpoint}/status/${jobId}`;
 
     const response = await fetch(url, {
       method: 'GET',
@@ -188,12 +213,12 @@ export class RunPodProvider {
   /**
    * Wait for job completion with polling
    */
-  private async waitForJob(jobId: string, timeoutMs = 180000): Promise<StatusResponse> {
+  private async waitForJob(jobId: string, timeoutMs = 180000, endpointId?: string): Promise<StatusResponse> {
     const startTime = Date.now();
     const pollInterval = 2000; // 2 seconds
 
     while (Date.now() - startTime < timeoutMs) {
-      const status = await this.getStatus(jobId);
+      const status = await this.getStatus(jobId, endpointId);
 
       if (status.status === 'COMPLETED') {
         return status;
@@ -302,6 +327,129 @@ export class RunPodProvider {
   }
 
   /**
+   * Build ComfyUI workflow for FLUX Kontext text-to-image generation
+   *
+   * Uses UNETLoader format for flux1-kontext-dev-fp8.safetensors from Network Volume
+   * Note: Kontext model supports image editing, but for now we use it for text-to-image
+   * with the same workflow structure as regular FLUX
+   */
+  private buildKontextInput(options: RunPodKontextOptions): unknown {
+    const width = options.width || 1024;
+    const height = options.height || 1024;
+    const seed = options.seed ?? Math.floor(Math.random() * 2147483647);
+    const steps = options.steps || 20;
+    const cfg = options.guidance || 1.0; // FLUX Kontext uses low CFG
+
+    // ComfyUI workflow using UNETLoader for Kontext model from Network Volume
+    return {
+      workflow: {
+        // Load UNET (Kontext model from Network Volume)
+        "1": {
+          "class_type": "UNETLoader",
+          "inputs": {
+            "unet_name": "flux1-kontext-dev-fp8.safetensors",
+            "weight_dtype": "fp8_e4m3fn"
+          }
+        },
+        // Load CLIP models
+        "2": {
+          "class_type": "DualCLIPLoader",
+          "inputs": {
+            "clip_name1": "clip_l.safetensors",
+            "clip_name2": "t5xxl_fp8_e4m3fn.safetensors",
+            "type": "flux"
+          }
+        },
+        // Load VAE
+        "3": {
+          "class_type": "VAELoader",
+          "inputs": {
+            "vae_name": "ae.safetensors"
+          }
+        },
+        // Encode prompt
+        "4": {
+          "class_type": "CLIPTextEncode",
+          "inputs": {
+            "text": options.prompt,
+            "clip": ["2", 0]
+          }
+        },
+        // Empty latent image
+        "5": {
+          "class_type": "EmptySD3LatentImage",
+          "inputs": {
+            "width": width,
+            "height": height,
+            "batch_size": 1
+          }
+        },
+        // KSampler
+        "6": {
+          "class_type": "KSampler",
+          "inputs": {
+            "model": ["1", 0],
+            "positive": ["4", 0],
+            "negative": ["4", 0],  // Use same as positive (no negative for FLUX)
+            "latent_image": ["5", 0],
+            "seed": seed,
+            "steps": steps,
+            "cfg": cfg,
+            "sampler_name": "euler",
+            "scheduler": "simple",
+            "denoise": 1.0
+          }
+        },
+        // VAE Decode
+        "7": {
+          "class_type": "VAEDecode",
+          "inputs": {
+            "samples": ["6", 0],
+            "vae": ["3", 0]
+          }
+        },
+        // Save Image
+        "8": {
+          "class_type": "SaveImage",
+          "inputs": {
+            "images": ["7", 0],
+            "filename_prefix": "kontext"
+          }
+        }
+      }
+    };
+  }
+
+  /**
+   * Generate image using FLUX Kontext for character consistency
+   */
+  async generateKontext(options: RunPodKontextOptions): Promise<string> {
+    if (!this.isKontextConfigured()) {
+      throw new Error('RunPod Kontext not configured. Set RUNPOD_KONTEXT_ENDPOINT_ID in .env');
+    }
+
+    console.log(`[RunPod Kontext] Generating: "${options.prompt.substring(0, 50)}..."`);
+
+    const input = this.buildKontextInput(options);
+
+    // Always use async with polling for reliable results
+    const jobId = await this.runAsync(input, this.kontextEndpointId);
+    console.log(`[RunPod Kontext] Job started: ${jobId}`);
+
+    const result = await this.waitForJob(jobId, 300000, this.kontextEndpointId);
+
+    if (result.status === 'FAILED') {
+      throw new Error(`Kontext generation failed: ${result.error || 'Unknown error'}`);
+    }
+
+    const imageData = this.extractImage(result);
+    const localUrl = await this.saveImageLocally(imageData, options.prompt);
+
+    console.log(`[RunPod Kontext] ✓ Saved: ${localUrl}`);
+    return localUrl;
+  }
+
+  /**
    * Download image from base64 or URL and save locally
    */
   private async saveImageLocally(imageData: string, prompt: string): Promise<string> {
@@ -388,23 +536,37 @@ export class RunPodProvider {
    * Extract image data from response
    */
   private extractImage(response: RunSyncResponse | StatusResponse): string {
-    // Log the response structure for debugging
-    console.log('[RunPod] Response structure:', JSON.stringify(response, null, 2).substring(0, 500));
+    // Log the response structure for debugging (truncate long base64)
+    const logOutput = JSON.stringify(response, (key, val) =>
+      key === 'data' && typeof val === 'string' && val.length > 100
+        ? `${val.substring(0, 50)}... (${Math.round(val.length / 1024)}KB base64)`
+        : val
+    , 2).substring(0, 1000);
+    console.log('[RunPod] Response structure:', logOutput);
 
-    // Standard format: output.images[0].image
-    if (response.output?.images?.length) {
-      const firstImage = response.output.images[0];
-      if (typeof firstImage === 'string') {
-        return firstImage;
-      }
-      if (firstImage && typeof firstImage.image === 'string') {
-        return firstImage.image;
-      }
-    }
-
-    // Some workers return image directly in output
+    // Check for images array in output (ComfyUI worker format)
     if (response.output && typeof response.output === 'object') {
       const output = response.output as Record<string, unknown>;
+
+      // ComfyUI worker format: output.images[0].data (base64)
+      if (Array.isArray(output.images) && output.images.length > 0) {
+        const firstImage = output.images[0];
+        if (typeof firstImage === 'string') {
+          return firstImage;
+        }
+        if (firstImage && typeof firstImage === 'object') {
+          const imgObj = firstImage as Record<string, unknown>;
+          // ComfyUI worker returns { data: "base64..." }
+          if (typeof imgObj.data === 'string') return imgObj.data;
+          if (typeof imgObj.image === 'string') return imgObj.image;
+          if (typeof imgObj.url === 'string') return imgObj.url;
+        }
+      }
+
+      // RunPod Hub format: image_url
+      if (typeof output.image_url === 'string') {
+        return output.image_url;
+      }
 
       // Check for direct image string
       if (typeof output.image === 'string') {
@@ -420,19 +582,16 @@ export class RunPodProvider {
       if (typeof output.message === 'string' && output.message.length > 100) {
         return output.message;
       }
+    }
 
-      // Check for images array with different structure
-      if (Array.isArray(output.images)) {
-        const img = output.images[0];
-        if (typeof img === 'string') {
-          return img;
-        }
-        if (img && typeof img === 'object') {
-          const imgObj = img as Record<string, unknown>;
-          if (typeof imgObj.image === 'string') return imgObj.image;
-          if (typeof imgObj.url === 'string') return imgObj.url;
-          if (typeof imgObj.data === 'string') return imgObj.data;
-        }
+    // Legacy format: response.output.images[0].image
+    if (response.output?.images?.length) {
+      const firstImage = response.output.images[0];
+      if (typeof firstImage === 'string') {
+        return firstImage;
+      }
+      if (firstImage && typeof firstImage.image === 'string') {
+        return firstImage.image;
       }
     }
 
@@ -507,9 +666,9 @@ export class RunPodProvider {
   }
 
   /**
-   * Get status info
+   * Get configuration status info
    */
-  getStatus(): { configured: boolean; endpointId: string | null } {
+  getConfigStatus(): { configured: boolean; endpointId: string | null } {
     return {
       configured: this.isConfigured(),
       endpointId: this.endpointId || null,

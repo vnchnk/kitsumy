@@ -156,8 +156,9 @@ app.post('/api/comic/generate-v2', async (request, reply) => {
       // Store character reference images (for Kontext mode)
       const characterReferences: Map<string, string> = new Map();
 
-      // Use Kontext mode when IMAGE_PROVIDER=flux-kontext in .env
-      const useKontextMode = process.env.IMAGE_PROVIDER === 'flux-kontext';
+      // Use Kontext mode when IMAGE_PROVIDER is flux-kontext or runpod-flux-kontext
+      const useKontextMode = process.env.IMAGE_PROVIDER === 'flux-kontext' ||
+                             process.env.IMAGE_PROVIDER === 'runpod-flux-kontext';
 
       // Phase 2a: Generate character references if using Kontext
       if (useKontextMode) {
@@ -240,8 +241,14 @@ app.post('/api/comic/generate-v2', async (request, reply) => {
       // Generate images - use Kontext if enabled, otherwise batch
       let batchResult;
       if (useKontextMode) {
-        // Kontext mode: generate sequentially with reference images
-        console.log(`[generate-v2] Using FLUX Kontext for character consistency...`);
+        // Determine which Kontext provider to use
+        const kontextProvider = process.env.IMAGE_PROVIDER === 'runpod-flux-kontext'
+          ? 'runpod-flux-kontext'
+          : 'flux-kontext';
+        const isRunPod = kontextProvider === 'runpod-flux-kontext';
+
+        // Kontext mode: generate with reference images
+        console.log(`[generate-v2] Using ${kontextProvider} for character consistency...`);
         const results: Array<{ id: string; imageUrl: string; success: boolean; error?: string }> = [];
 
         for (let i = 0; i < panelImages.length; i++) {
@@ -255,16 +262,17 @@ app.post('/api/comic/generate-v2', async (request, reply) => {
                 prompt: p.prompt,
                 referenceImage: p.referenceImage,
                 aspectRatio: p.aspectRatio,
-                provider: 'flux-kontext',
+                provider: kontextProvider,
               });
               results.push({ id: p.id, imageUrl: result.imageUrl, success: true });
             } else {
               // No main character - use regular provider (no reference needed)
+              const fallbackProvider = isRunPod ? 'runpod-flux' : 'flux-dev';
               const result = await imageGenerator.generate({
                 prompt: p.prompt,
                 negativePrompt: p.negativePrompt,
                 aspectRatio: p.aspectRatio,
-                provider: body.imageProvider || 'flux-dev',
+                provider: body.imageProvider || fallbackProvider,
               });
               results.push({ id: p.id, imageUrl: result.imageUrl, success: true });
             }
@@ -273,8 +281,8 @@ app.post('/api/comic/generate-v2', async (request, reply) => {
             results.push({ id: p.id, imageUrl: '', success: false, error: err.message });
           }
 
-          // Rate limit delay for Replicate (12s between requests)
-          if (i < panelImages.length - 1) {
+          // Rate limit delay for Replicate only (RunPod has no rate limit)
+          if (!isRunPod && i < panelImages.length - 1) {
             console.log(`[generate-v2] Waiting 12s for rate limit...`);
             await new Promise(r => setTimeout(r, 12000));
           }
@@ -282,7 +290,7 @@ app.post('/api/comic/generate-v2', async (request, reply) => {
 
         batchResult = {
           results,
-          provider: 'flux-kontext' as ImageProvider,
+          provider: kontextProvider as ImageProvider,
           totalGenerated: results.filter(r => r.success).length,
           totalFailed: results.filter(r => !r.success).length,
         };

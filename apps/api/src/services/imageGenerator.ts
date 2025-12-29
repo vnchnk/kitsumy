@@ -27,7 +27,7 @@ if (!fs.existsSync(IMAGES_DIR)) {
   fs.mkdirSync(IMAGES_DIR, { recursive: true });
 }
 
-export type ImageProvider = 'flux-schnell' | 'flux-dev' | 'flux-pro' | 'runpod-flux' | 'flux-kontext';
+export type ImageProvider = 'flux-schnell' | 'flux-dev' | 'flux-pro' | 'runpod-flux' | 'flux-kontext' | 'runpod-flux-kontext';
 export type AspectRatio = '1:1' | '16:9' | '9:16' | '4:3' | '3:4' | '3:2' | '2:3';
 
 export interface GenerateImageRequest {
@@ -114,7 +114,7 @@ export class ImageGenerator {
 
     // Get default provider from env or use flux-dev
     const envProvider = process.env.IMAGE_PROVIDER as ImageProvider;
-    this.defaultProvider = ['flux-schnell', 'flux-dev', 'flux-pro', 'runpod-flux', 'flux-kontext'].includes(envProvider)
+    this.defaultProvider = ['flux-schnell', 'flux-dev', 'flux-pro', 'runpod-flux', 'flux-kontext', 'runpod-flux-kontext'].includes(envProvider)
       ? envProvider
       : 'flux-dev';
   }
@@ -150,7 +150,7 @@ export class ImageGenerator {
       return this.generateWithRunPod(request, aspectRatio);
     }
 
-    // FLUX Kontext - requires reference image for character consistency
+    // FLUX Kontext (Replicate) - requires reference image for character consistency
     if (provider === 'flux-kontext') {
       if (!request.referenceImage) {
         throw new Error('FLUX Kontext requires a reference image (referenceImage parameter)');
@@ -161,6 +161,14 @@ export class ImageGenerator {
         aspectRatio,
         seed: request.seed,
       });
+    }
+
+    // RunPod FLUX Kontext - open source, requires reference image
+    if (provider === 'runpod-flux-kontext') {
+      if (!request.referenceImage) {
+        throw new Error('RunPod FLUX Kontext requires a reference image (referenceImage parameter)');
+      }
+      return this.generateWithRunPodKontext(request, aspectRatio);
     }
 
     const input: Record<string, unknown> = {
@@ -253,7 +261,38 @@ export class ImageGenerator {
   }
 
   /**
-   * Generate image using FLUX Kontext Dev for character consistency
+   * Generate image using RunPod FLUX Kontext (open source)
+   */
+  private async generateWithRunPodKontext(
+    request: GenerateImageRequest,
+    aspectRatio: AspectRatio
+  ): Promise<GenerateImageResponse> {
+    const { width, height } = this.aspectRatioToDimensions(aspectRatio);
+
+    // Convert local image to base64 for RunPod
+    let imageInput = request.referenceImage!;
+    if (imageInput.includes('localhost') || imageInput.startsWith('/')) {
+      imageInput = await this.convertToDataUrl(imageInput);
+    }
+
+    const imageUrl = await this.runpod.generateKontext({
+      prompt: request.prompt,
+      referenceImage: imageInput,
+      width,
+      height,
+      seed: request.seed,
+    });
+
+    return {
+      imageUrl,
+      provider: 'runpod-flux-kontext',
+      aspectRatio,
+      seed: request.seed,
+    };
+  }
+
+  /**
+   * Generate image using FLUX Kontext Dev for character consistency (Replicate)
    *
    * FLUX Kontext takes a reference image and maintains the character's identity
    * while placing them in new scenes/poses as described by the prompt.
@@ -618,10 +657,16 @@ export class ImageGenerator {
         description: 'Cheapest option, parallel batch processing',
       },
       'flux-kontext': {
-        name: 'FLUX Kontext Dev',
+        name: 'FLUX Kontext Dev (Replicate)',
         costPerImage: '~$0.025',
         speed: 'Medium (~8s)',
         description: 'Character consistency (95%+) - requires reference image',
+      },
+      'runpod-flux-kontext': {
+        name: 'FLUX Kontext Dev (RunPod, open source)',
+        costPerImage: '~$0.003',
+        speed: 'Medium (~8s) + cold start',
+        description: 'Character consistency (95%+) - open source, 8x cheaper!',
       },
     };
   }
