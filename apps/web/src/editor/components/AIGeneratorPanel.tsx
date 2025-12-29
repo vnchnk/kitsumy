@@ -72,7 +72,7 @@ export const AIGeneratorPanel = () => {
         maxPages: maxPages,
       };
 
-      const response = await fetch('http://localhost:3001/api/comic/generate-v2', {
+      const response = await fetch('http://localhost:3001/api/comic/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody),

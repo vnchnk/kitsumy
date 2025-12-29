@@ -36,7 +36,7 @@ function App() {
   const handleGenerate = async (prompt: string) => {
     setIsLoading(true);
     try {
-      const res = await fetch('http://localhost:3001/api/comic/generate-v2', {
+      const res = await fetch('http://localhost:3001/api/comic/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
