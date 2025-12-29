@@ -664,14 +664,4 @@ export class RunPodProvider {
 
     return results;
   }
-
-  /**
-   * Get configuration status info
-   */
-  getConfigStatus(): { configured: boolean; endpointId: string | null } {
-    return {
-      configured: this.isConfigured(),
-      endpointId: this.endpointId || null,
-    };
-  }
 }

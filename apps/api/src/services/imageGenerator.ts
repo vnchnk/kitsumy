@@ -626,50 +626,6 @@ export class ImageGenerator {
       totalFailed,
     };
   }
-
-  /**
-   * Get available providers and their costs
-   */
-  getProviderInfo(): Record<ImageProvider, { name: string; costPerImage: string; speed: string; description?: string }> {
-    return {
-      'flux-schnell': {
-        name: 'Flux Schnell',
-        costPerImage: '~$0.003',
-        speed: 'Fast (~2s)',
-        description: 'Quick drafts, lower quality',
-      },
-      'flux-dev': {
-        name: 'Flux Dev',
-        costPerImage: '~$0.025',
-        speed: 'Medium (~5s)',
-        description: 'Good balance of quality and speed',
-      },
-      'flux-pro': {
-        name: 'Flux 1.1 Pro',
-        costPerImage: '~$0.04',
-        speed: 'Slow (~8s)',
-        description: 'Best quality, production use',
-      },
-      'runpod-flux': {
-        name: 'RunPod Flux Dev',
-        costPerImage: '~$0.003',
-        speed: 'Medium (~5s) + cold start',
-        description: 'Cheapest option, parallel batch processing',
-      },
-      'flux-kontext': {
-        name: 'FLUX Kontext Dev (Replicate)',
-        costPerImage: '~$0.025',
-        speed: 'Medium (~8s)',
-        description: 'Character consistency (95%+) - requires reference image',
-      },
-      'runpod-flux-kontext': {
-        name: 'FLUX Kontext Dev (RunPod, open source)',
-        costPerImage: '~$0.003',
-        speed: 'Medium (~8s) + cold start',
-        description: 'Character consistency (95%+) - open source, 8x cheaper!',
-      },
-    };
-  }
 }
 
 export const imageGenerator = new ImageGenerator();
