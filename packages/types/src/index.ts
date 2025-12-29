@@ -181,76 +181,72 @@ export const LAYOUT_PANEL_COUNT: Record<PageLayout, number> = {
 // Aspect ratio для Flux
 export type AspectRatio = '1:1' | '16:9' | '9:16' | '4:3' | '3:4' | '2:1' | '1:2' | '3:2' | '2:3';
 
-// Розмір слота (для пріоритету генерації)
-export type SlotSize = 'small' | 'medium' | 'large';
-
 // Опис слота панелі в темплейті
 export interface LayoutSlot {
   position: number;
   aspectRatio: AspectRatio;
-  size: SlotSize;
 }
 
 // Слоти для кожного темплейту
 export const LAYOUT_SLOTS: Record<PageLayout, LayoutSlot[]> = {
   'single': [
-    { position: 1, aspectRatio: '3:2', size: 'large' },
+    { position: 1, aspectRatio: '3:2' },
   ],
   'two-horizontal': [
-    { position: 1, aspectRatio: '16:9', size: 'medium' },
-    { position: 2, aspectRatio: '16:9', size: 'medium' },
+    { position: 1, aspectRatio: '16:9' },
+    { position: 2, aspectRatio: '16:9' },
   ],
   'two-vertical': [
-    { position: 1, aspectRatio: '9:16', size: 'medium' },
-    { position: 2, aspectRatio: '9:16', size: 'medium' },
+    { position: 1, aspectRatio: '9:16' },
+    { position: 2, aspectRatio: '9:16' },
   ],
   'three-rows': [
-    { position: 1, aspectRatio: '16:9', size: 'medium' },
-    { position: 2, aspectRatio: '16:9', size: 'medium' },
-    { position: 3, aspectRatio: '16:9', size: 'medium' },
+    { position: 1, aspectRatio: '16:9' },
+    { position: 2, aspectRatio: '16:9' },
+    { position: 3, aspectRatio: '16:9' },
   ],
   'grid-2x2': [
-    { position: 1, aspectRatio: '1:1', size: 'small' },
-    { position: 2, aspectRatio: '1:1', size: 'small' },
-    { position: 3, aspectRatio: '1:1', size: 'small' },
-    { position: 4, aspectRatio: '1:1', size: 'small' },
+    { position: 1, aspectRatio: '1:1' },
+    { position: 2, aspectRatio: '1:1' },
+    { position: 3, aspectRatio: '1:1' },
+    { position: 4, aspectRatio: '1:1' },
   ],
   'big-left': [
-    { position: 1, aspectRatio: '2:3', size: 'large' },
-    { position: 2, aspectRatio: '4:3', size: 'small' },
-    { position: 3, aspectRatio: '4:3', size: 'small' },
+    { position: 1, aspectRatio: '2:3' },
+    { position: 2, aspectRatio: '4:3' },
+    { position: 3, aspectRatio: '4:3' },
   ],
   'big-right': [
-    { position: 1, aspectRatio: '4:3', size: 'small' },
-    { position: 2, aspectRatio: '4:3', size: 'small' },
-    { position: 3, aspectRatio: '2:3', size: 'large' },
+    { position: 1, aspectRatio: '4:3' },
+    { position: 2, aspectRatio: '4:3' },
+    { position: 3, aspectRatio: '2:3' },
   ],
   'big-top': [
-    { position: 1, aspectRatio: '16:9', size: 'large' },
-    { position: 2, aspectRatio: '1:1', size: 'small' },
-    { position: 3, aspectRatio: '1:1', size: 'small' },
+    { position: 1, aspectRatio: '16:9' },
+    { position: 2, aspectRatio: '1:1' },
+    { position: 3, aspectRatio: '1:1' },
   ],
   'big-bottom': [
-    { position: 1, aspectRatio: '1:1', size: 'small' },
-    { position: 2, aspectRatio: '1:1', size: 'small' },
-    { position: 3, aspectRatio: '16:9', size: 'large' },
+    { position: 1, aspectRatio: '1:1' },
+    { position: 2, aspectRatio: '1:1' },
+    { position: 3, aspectRatio: '16:9' },
   ],
   'strip-3': [
-    { position: 1, aspectRatio: '2:3', size: 'medium' },
-    { position: 2, aspectRatio: '2:3', size: 'medium' },
-    { position: 3, aspectRatio: '2:3', size: 'medium' },
+    { position: 1, aspectRatio: '2:3' },
+    { position: 2, aspectRatio: '2:3' },
+    { position: 3, aspectRatio: '2:3' },
   ],
   'manga-3': [
-    { position: 1, aspectRatio: '3:4', size: 'large' },
-    { position: 2, aspectRatio: '4:3', size: 'small' },
-    { position: 3, aspectRatio: '4:3', size: 'small' },
+    { position: 1, aspectRatio: '3:4' },
+    { position: 2, aspectRatio: '4:3' },
+    { position: 3, aspectRatio: '4:3' },
   ],
   'action': [
-    { position: 1, aspectRatio: '16:9', size: 'large' },
-    { position: 2, aspectRatio: '1:1', size: 'small' },
-    { position: 3, aspectRatio: '1:1', size: 'small' },
-    { position: 4, aspectRatio: '1:1', size: 'small' },
-    { position: 5, aspectRatio: '16:9', size: 'medium' },
+    { position: 1, aspectRatio: '16:9' },
+    { position: 2, aspectRatio: '1:1' },
+    { position: 3, aspectRatio: '1:1' },
+    { position: 4, aspectRatio: '1:1' },
+    { position: 5, aspectRatio: '16:9' },
   ],
 };
 
@@ -372,9 +368,7 @@ export interface PanelPlan {
   dialogue: PanelDialogue[];        // Діалоги з placement hint
   narrative: string | null;         // Текст наратора
   narrativePlacement?: TextPlacement; // Де розмістити наратив (legacy, default: top-left)
-  narrativePrecisePlacement?: PrecisePlacement; // Точні координати для наративу
   sfx: string | null;               // "BOOM!", "CRASH!"
-  sfxPrecisePlacement?: PrecisePlacement; // Точні координати для SFX
 
   // Image generation (for Flux)
   aspectRatio: AspectRatio; // From layout slot, e.g. "16:9", "1:1", "2:3"
