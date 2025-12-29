@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useEditorStore } from './store';
 import {
-  Canvas,
   CanvasElement,
   ImageElement,
   NarrativeElement,

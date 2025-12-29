@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 export const ComicReader = ({ comic }: { comic: any }) => {
   if (!comic) return null;
 
-  const getRandomClip = (i: number) => {
+  const getRandomClip = (_i: number) => {
     const v = [
         `0% ${Math.random() * 2}%`,
         `${98 + Math.random() * 2}% ${Math.random() * 1}%`,

@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { useEditorStore } from '../store';
-import { CanvasElement, ImageElement, NarrativeElement, DialogueElement, CLIP_PRESETS, BorderStyle } from '../types';
+import { CanvasElement, ImageElement, NarrativeElement, DialogueElement, CLIP_PRESETS } from '../types';
 import { SpeechBubble } from './SpeechBubble';
 
 // Convert points array to CSS polygon string
@@ -17,72 +17,6 @@ const getClipPath = (el: ImageElement): string => {
   }
   const preset = CLIP_PRESETS[el.clipPreset] || CLIP_PRESETS['none'];
   return pointsToClipPath(preset.points as unknown as number[][]);
-};
-
-// Get border style CSS
-const getBorderStyles = (style: BorderStyle, width: number, color: string): React.CSSProperties => {
-  const base: React.CSSProperties = {
-    borderWidth: width,
-    borderColor: color,
-    borderStyle: 'solid',
-  };
-  
-  switch (style) {
-    case 'none':
-      return { border: 'none' };
-    case 'clean':
-      return base;
-    case 'rough':
-      return {
-        ...base,
-        boxShadow: `
-          inset 1px 0 0 ${color},
-          inset -1px 0 0 ${color},
-          inset 0 1px 0 ${color},
-          inset 0 -1px 0 ${color},
-          1px 1px 0 ${color},
-          -1px -1px 0 ${color}
-        `,
-        filter: 'url(#rough-edge)',
-      };
-    case 'sketchy':
-      return {
-        ...base,
-        boxShadow: `
-          2px 2px 0 ${color},
-          -1px -1px 0 ${color},
-          1px -1px 0 ${color},
-          -1px 1px 0 ${color}
-        `,
-        borderStyle: 'solid',
-      };
-    case 'double':
-      return {
-        border: `${width}px double ${color}`,
-        outline: `${Math.max(1, width - 1)}px solid ${color}`,
-        outlineOffset: `${width}px`,
-      };
-    case 'worn':
-      return {
-        ...base,
-        boxShadow: `
-          inset 0 0 ${width * 2}px rgba(0,0,0,0.3),
-          0 0 ${width}px rgba(0,0,0,0.2)
-        `,
-        filter: 'url(#worn-edge)',
-      };
-    case 'ink':
-      return {
-        ...base,
-        boxShadow: `
-          0 0 ${width}px ${color},
-          0 0 ${width * 2}px ${color}
-        `,
-        filter: 'url(#ink-bleed)',
-      };
-    default:
-      return base;
-  }
 };
 
 // SVG Filters for border effects
@@ -273,7 +207,7 @@ export const EditorCanvas = () => {
       const transformEl = canvasTransformRef.current;
       if (!transformEl) return;
 
-      const { zoom, setZoom, setPanOffset } = useEditorStore.getState();
+      const { setZoom, setPanOffset } = useEditorStore.getState();
       
       const newZoom = Math.max(0.1, Math.min(3, startZoom * e.scale));
 
@@ -642,7 +576,7 @@ export const EditorCanvas = () => {
   };
 
 
-  const renderImageElement = (el: ImageElement, isSelected: boolean) => {
+  const renderImageElement = (el: ImageElement, _isSelected: boolean) => {
     const clipPath = getClipPath(el);
     const points = el.customClipPath || (CLIP_PRESETS[el.clipPreset]?.points as unknown as number[][]) || [[0,0],[100,0],[100,100],[0,100]];
     const svgPoints = points.map(([x, y]) => `${x},${y}`).join(' ');

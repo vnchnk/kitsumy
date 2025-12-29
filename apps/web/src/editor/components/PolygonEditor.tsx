@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import { Plus, Minus, RotateCcw } from 'lucide-react';
+import { Plus, RotateCcw } from 'lucide-react';
 
 interface Props {
   points: number[][];

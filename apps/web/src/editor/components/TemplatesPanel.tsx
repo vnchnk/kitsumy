@@ -25,9 +25,6 @@ const SLANT = 4;
 // Generate matched clip paths with uniform gaps
 const generateMatchedClipPaths = (panels: Panel[]): (number[][] | null)[] => {
   // Find shared edges between panels (accounting for PANEL_GAP between them)
-  // Key: string representation of edge position, Value: slant offsets
-  type EdgeSlant = { leftOffset: number; rightOffset: number } | { topOffset: number; bottomOffset: number };
-  
   // Store edges by their approximate position (midpoint of gap between panels)
   const sharedHEdges: { y: number; slant: { leftOffset: number; rightOffset: number }; panels: Set<number> }[] = [];
   const sharedVEdges: { x: number; slant: { topOffset: number; bottomOffset: number }; panels: Set<number> }[] = [];

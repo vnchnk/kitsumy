@@ -1,5 +1,5 @@
 import { useEditorStore } from '../store';
-import { PAPER_SIZES, PaperSize, CanvasLayout, BORDER_STYLES, BorderStyle } from '../types';
+import { PAPER_SIZES, PaperSize, BORDER_STYLES, BorderStyle } from '../types';
 import { Plus, Copy, Trash2, LayoutGrid, ArrowRight, ArrowDown, Focus } from 'lucide-react';
 
 export const PagesSidebar = () => {

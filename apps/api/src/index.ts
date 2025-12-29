@@ -5,7 +5,6 @@ import { ComicPlanner } from './services/comicPlanner.js';
 import { ComicPlanRequest, ComicStyleConfig, ComicStyle, ComicSetting } from '@kitsumy/types';
 import fs from 'fs';
 import path from 'path';
-import { textPlacer, TextBlock } from './services/textPlacer.js';
 import { imageGenerator, ImageProvider, AspectRatio } from './services/imageGenerator.js';
 
 const app = Fastify({ logger: false });
@@ -297,89 +296,6 @@ app.post('/api/comic/generate-v2', async (request, reply) => {
       }
 
       console.log(`[generate-v2] Images: ${batchResult.totalGenerated} success, ${batchResult.totalFailed} failed`);
-
-      // Phase 3: Analyze images and place text (parallel)
-      console.log(`[generate-v2] Phase 3: Analyzing images for text placement...`);
-
-      const analysisPromises = panelImages.map(async (panelInfo) => {
-        const panel = plan.chapters[panelInfo.chapterIdx].pages[panelInfo.pageIdx].panels[panelInfo.panelIdx];
-
-        // Skip if no image or no text to place
-        if (!panel.imageUrl || (panel.dialogue.length === 0 && !panel.narrative)) {
-          return;
-        }
-
-        try {
-          // Download image and convert to base64
-          const imageResponse = await fetch(panel.imageUrl);
-          if (!imageResponse.ok) {
-            console.log(`[generate-v2] Skip analysis for ${panel.id}: image fetch failed`);
-            return;
-          }
-          const imageBuffer = await imageResponse.arrayBuffer();
-          const imageBase64 = Buffer.from(imageBuffer).toString('base64');
-
-          // Build text blocks for analysis
-          const textBlocks: TextBlock[] = [];
-
-          if (panel.narrative) {
-            textBlocks.push({
-              id: 'narrative',
-              type: 'narrative',
-              text: panel.narrative,
-            });
-          }
-
-          panel.dialogue.forEach((dlg, idx) => {
-            textBlocks.push({
-              id: `dialogue-${idx}`,
-              type: 'dialogue',
-              text: dlg.text,
-              speaker: dlg.characterId,
-            });
-          });
-
-          if (panel.sfx) {
-            textBlocks.push({
-              id: 'sfx',
-              type: 'sfx',
-              text: panel.sfx,
-            });
-          }
-
-          // Analyze with Vision
-          const result = await textPlacer.analyzeImage(imageBase64, textBlocks, panel.aspectRatio);
-
-          // Apply precise placements to panel
-          for (const placement of result.placements) {
-            const precisePlacement = {
-              x: placement.x,
-              y: placement.y,
-              width: placement.width,
-              height: placement.height,
-              tailDirection: placement.tailDirection,
-            };
-
-            if (placement.id === 'narrative') {
-              panel.narrativePrecisePlacement = precisePlacement;
-            } else if (placement.id === 'sfx') {
-              panel.sfxPrecisePlacement = precisePlacement;
-            } else if (placement.id.startsWith('dialogue-')) {
-              const idx = parseInt(placement.id.replace('dialogue-', ''));
-              if (panel.dialogue[idx]) {
-                panel.dialogue[idx].precisePlacement = precisePlacement;
-              }
-            }
-          }
-
-          console.log(`[generate-v2] ${panel.id}: placed ${result.placements.length} text blocks`);
-        } catch (err) {
-          console.log(`[generate-v2] ${panel.id}: analysis failed, using defaults`);
-        }
-      });
-
-      await Promise.all(analysisPromises);
-      console.log(`[generate-v2] Phase 3: Text placement complete`);
     }
 
     // Save plan to file
@@ -463,52 +379,6 @@ app.get('/api/comic/plans', async (request, reply) => {
     return reply.status(500).send({
       success: false,
       error: 'Failed to list plans'
-    });
-  }
-});
-
-// Analyze image for optimal text placement using Vision LLM
-app.post('/api/analyze-text-placement', async (request, reply) => {
-  const body = request.body as {
-    imageBase64: string;
-    textBlocks: TextBlock[];
-    aspectRatio?: string;
-  };
-
-  if (!body.imageBase64) {
-    return reply.status(400).send({
-      success: false,
-      error: 'Missing required field: imageBase64'
-    });
-  }
-
-  if (!body.textBlocks || !Array.isArray(body.textBlocks)) {
-    return reply.status(400).send({
-      success: false,
-      error: 'Missing required field: textBlocks (array)'
-    });
-  }
-
-  try {
-    console.log(`[analyze-text-placement] Analyzing image for ${body.textBlocks.length} text blocks`);
-
-    const result = await textPlacer.analyzeImage(
-      body.imageBase64,
-      body.textBlocks,
-      body.aspectRatio || '1:1'
-    );
-
-    console.log(`[analyze-text-placement] Found placements:`, result.placements.map(p => `${p.id}:(${p.x},${p.y})`));
-
-    return {
-      success: true,
-      ...result
-    };
-  } catch (err: any) {
-    console.error('[analyze-text-placement] Error:', err);
-    return reply.status(500).send({
-      success: false,
-      error: err.message || 'Analysis failed'
     });
   }
 });

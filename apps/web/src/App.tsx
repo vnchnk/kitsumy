@@ -36,14 +36,23 @@ function App() {
   const handleGenerate = async (prompt: string) => {
     setIsLoading(true);
     try {
-      const res = await fetch('http://localhost:3001/generate', {
+      const res = await fetch('http://localhost:3001/api/comic/generate-v2', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode, prompt, style, maxPages: 1, userContext: {} })
+        body: JSON.stringify({
+          prompt,
+          style: { visual: style, setting: 'realistic' },
+          maxPages: 1
+        })
       });
       const json = await res.json();
       if (json.success) {
-        setComicData(json.data);
+        // Fetch the full plan by planId
+        const planRes = await fetch(`http://localhost:3001/api/comic/plan/${json.planId}`);
+        const planJson = await planRes.json();
+        if (planJson.success) {
+          setComicData(planJson.plan);
+        }
       }
     } catch (e) {
       console.error(e);
