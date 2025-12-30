@@ -119,10 +119,50 @@ ls -la /comfyui/models/
 - Verify endpoint is in the same datacenter as volume
 - Check volume status in RunPod console
 
+## Option B: Custom Docker Image (No Volume Required)
+
+Build and deploy a custom Docker image that auto-downloads models on cold start.
+
+### 1. Build Docker Image
+
+```bash
+cd apps/api/runpod-kontext
+
+# Build
+docker build -t YOUR_REGISTRY/kitsumy-kontext:latest .
+
+# Push to registry (Docker Hub, GitHub Container Registry, etc.)
+docker push YOUR_REGISTRY/kitsumy-kontext:latest
+```
+
+### 2. Create Serverless Endpoint
+
+1. Go to [RunPod Console → Serverless](https://www.runpod.io/console/serverless)
+2. Create new Endpoint:
+   - **Docker Image**: `YOUR_REGISTRY/kitsumy-kontext:latest`
+   - **GPU**: RTX 4090 (24GB) or higher
+   - **Network Volume**: Optional (faster if attached)
+   - **Environment Variables**:
+     ```
+     HF_TOKEN=your_huggingface_token
+     MODEL_TYPE=fp8
+     ```
+
+### How It Works
+
+The custom image checks at startup:
+- **With Volume**: Links models from `/runpod-volume/models/` → instant start
+- **Without Volume**: Downloads from HuggingFace → ~3-5 min cold start
+
+This gives you flexibility: use volume for fast dev, go without for production/portability.
+
 ## Files
 
 | File | Description |
 |------|-------------|
+| `Dockerfile` | Custom worker image with init script |
+| `scripts/start.sh` | Custom entrypoint |
+| `scripts/init_models.sh` | Checks volume or downloads models |
 | `scripts/download_models.sh` | Downloads all models from HuggingFace |
 | `extra_model_paths.yaml` | ComfyUI configuration for model paths |
 | `README.md` | This documentation |

@@ -38,10 +38,10 @@ log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
-# Models are ALWAYS stored on the network volume for Serverless compatibility
-# On Pod: /workspace is the network volume
-# On Serverless: /runpod-volume is the network volume
-MODELS_DIR="/workspace/models"
+# Models directory can be overridden via environment variable
+# Default: /workspace/models (for Pod with Network Volume)
+# Docker: /comfyui/models (when downloading inside container)
+MODELS_DIR="${MODELS_DIR:-/workspace/models}"
 
 log_info "============================================"
 log_info "FLUX Kontext Model Downloader"
