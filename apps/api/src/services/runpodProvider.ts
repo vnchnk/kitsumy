@@ -327,23 +327,107 @@ export class RunPodProvider {
   }
 
   /**
-   * Build ComfyUI workflow for FLUX Kontext text-to-image generation
+   * Build ComfyUI workflow for FLUX Kontext image-to-image generation
    *
-   * Uses UNETLoader format for flux1-kontext-dev-fp8.safetensors from Network Volume
-   * Note: Kontext model supports image editing, but for now we use it for text-to-image
-   * with the same workflow structure as regular FLUX
+   * FLUX Kontext uses a special approach: it takes a reference image concatenated
+   * with the prompt to maintain character identity while generating new poses/scenes.
+   * This is NOT traditional img2img with denoise - Kontext is trained specifically
+   * for character consistency.
+   *
+   * The workflow:
+   * 1. Load reference image
+   * 2. Use FluxKontextImageToImage node (or equivalent) which handles identity preservation
+   * 3. Generate with full denoise (1.0) because Kontext handles identity internally
    */
   private buildKontextInput(options: RunPodKontextOptions): unknown {
     const width = options.width || 1024;
     const height = options.height || 1024;
     const seed = options.seed ?? Math.floor(Math.random() * 2147483647);
-    const steps = options.steps || 20;
-    const cfg = options.guidance || 1.0; // FLUX Kontext uses low CFG
+    const steps = options.steps || 28;
+    const cfg = options.guidance || 1.0;
 
-    // ComfyUI workflow using UNETLoader for Kontext model from Network Volume
+    // If no reference image, fall back to text-to-image
+    if (!options.referenceImage) {
+      console.log('[RunPod Kontext] No reference image, using text-to-image mode');
+      return {
+        workflow: {
+          "1": {
+            "class_type": "UNETLoader",
+            "inputs": {
+              "unet_name": "flux1-kontext-dev-fp8.safetensors",
+              "weight_dtype": "fp8_e4m3fn"
+            }
+          },
+          "2": {
+            "class_type": "DualCLIPLoader",
+            "inputs": {
+              "clip_name1": "clip_l.safetensors",
+              "clip_name2": "t5xxl_fp8_e4m3fn.safetensors",
+              "type": "flux"
+            }
+          },
+          "3": {
+            "class_type": "VAELoader",
+            "inputs": { "vae_name": "ae.safetensors" }
+          },
+          "4": {
+            "class_type": "CLIPTextEncode",
+            "inputs": { "text": options.prompt, "clip": ["2", 0] }
+          },
+          "5": {
+            "class_type": "EmptySD3LatentImage",
+            "inputs": { "width": width, "height": height, "batch_size": 1 }
+          },
+          "6": {
+            "class_type": "KSampler",
+            "inputs": {
+              "model": ["1", 0],
+              "positive": ["4", 0],
+              "negative": ["4", 0],
+              "latent_image": ["5", 0],
+              "seed": seed,
+              "steps": steps,
+              "cfg": cfg,
+              "sampler_name": "euler",
+              "scheduler": "simple",
+              "denoise": 1.0
+            }
+          },
+          "7": {
+            "class_type": "VAEDecode",
+            "inputs": { "samples": ["6", 0], "vae": ["3", 0] }
+          },
+          "8": {
+            "class_type": "SaveImage",
+            "inputs": { "images": ["7", 0], "filename_prefix": "kontext" }
+          }
+        }
+      };
+    }
+
+    // Extract base64 from data URL if needed
+    let base64Image = options.referenceImage;
+    if (base64Image.startsWith('data:')) {
+      base64Image = base64Image.split(',')[1];
+    }
+
+    // denoise controls how much of the reference is preserved:
+    // 0.0 = exact copy, 1.0 = ignore reference completely
+    // 0.85-0.95 = keep face/identity but allow new poses/scenes
+    const denoise = 0.90;
+
+    console.log(`[RunPod Kontext] Using img2img mode with denoise=${denoise}`);
+
+    // Standard img2img workflow - load reference, encode to latent, denoise partially
     return {
+      images: [
+        {
+          name: "reference.png",
+          image: base64Image
+        }
+      ],
       workflow: {
-        // Load UNET (Kontext model from Network Volume)
+        // Load UNET (Kontext model)
         "1": {
           "class_type": "UNETLoader",
           "inputs": {
@@ -363,57 +447,61 @@ export class RunPodProvider {
         // Load VAE
         "3": {
           "class_type": "VAELoader",
+          "inputs": { "vae_name": "ae.safetensors" }
+        },
+        // Load reference image
+        "4": {
+          "class_type": "LoadImage",
           "inputs": {
-            "vae_name": "ae.safetensors"
+            "image": "reference.png"
+          }
+        },
+        // Encode reference to latent
+        "5": {
+          "class_type": "VAEEncode",
+          "inputs": {
+            "pixels": ["4", 0],
+            "vae": ["3", 0]
           }
         },
         // Encode prompt
-        "4": {
+        "6": {
           "class_type": "CLIPTextEncode",
           "inputs": {
             "text": options.prompt,
             "clip": ["2", 0]
           }
         },
-        // Empty latent image
-        "5": {
-          "class_type": "EmptySD3LatentImage",
-          "inputs": {
-            "width": width,
-            "height": height,
-            "batch_size": 1
-          }
-        },
-        // KSampler
-        "6": {
+        // KSampler with high denoise to allow pose changes while keeping identity hints
+        "7": {
           "class_type": "KSampler",
           "inputs": {
             "model": ["1", 0],
-            "positive": ["4", 0],
-            "negative": ["4", 0],  // Use same as positive (no negative for FLUX)
+            "positive": ["6", 0],
+            "negative": ["6", 0],
             "latent_image": ["5", 0],
             "seed": seed,
             "steps": steps,
             "cfg": cfg,
             "sampler_name": "euler",
             "scheduler": "simple",
-            "denoise": 1.0
+            "denoise": denoise
           }
         },
         // VAE Decode
-        "7": {
+        "8": {
           "class_type": "VAEDecode",
           "inputs": {
-            "samples": ["6", 0],
+            "samples": ["7", 0],
             "vae": ["3", 0]
           }
         },
         // Save Image
-        "8": {
+        "9": {
           "class_type": "SaveImage",
           "inputs": {
-            "images": ["7", 0],
-            "filename_prefix": "kontext"
+            "images": ["8", 0],
+            "filename_prefix": "kontext_img2img"
           }
         }
       }

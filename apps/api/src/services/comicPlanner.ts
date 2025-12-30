@@ -41,7 +41,7 @@ const characterSchema = z.object({
     name: z.string(),
     age: z.number(),
     gender: z.enum(['male', 'female', 'other']),
-    bodyType: z.enum(bodyTypes as [string, ...string[]]),
+    bodyType: z.string(),
     height: z.string(),
     face: z.object({
       shape: z.string(),
