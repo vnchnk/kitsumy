@@ -34,13 +34,11 @@ const log = (message: string) => {
 // Zod Schemas
 // ============================================
 
-const bodyTypes: BodyType[] = ['slim', 'average', 'athletic', 'muscular', 'heavy', 'petite'];
-
 const characterSchema = z.object({
   characters: z.array(z.object({
     name: z.string(),
     age: z.number(),
-    gender: z.enum(['male', 'female', 'other']),
+    gender: z.string(),
     bodyType: z.string(),
     height: z.string(),
     face: z.object({
