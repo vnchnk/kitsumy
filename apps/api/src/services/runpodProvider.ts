@@ -329,24 +329,22 @@ export class RunPodProvider {
   /**
    * Build ComfyUI workflow for FLUX Kontext image-to-image generation
    *
-   * FLUX Kontext uses a special approach: it takes a reference image concatenated
-   * with the prompt to maintain character identity while generating new poses/scenes.
-   * This is NOT traditional img2img with denoise - Kontext is trained specifically
-   * for character consistency.
+   * FLUX Kontext uses ReferenceLatent node to preserve character identity:
+   * 1. Load reference image → FluxKontextImageScale → VAEEncode
+   * 2. ReferenceLatent attaches encoded reference to conditioning
+   * 3. Generate NEW image with full denoise (1.0) - Kontext preserves identity internally
    *
-   * The workflow:
-   * 1. Load reference image
-   * 2. Use FluxKontextImageToImage node (or equivalent) which handles identity preservation
-   * 3. Generate with full denoise (1.0) because Kontext handles identity internally
+   * Key difference from img2img: Kontext generates a NEW composition while
+   * preserving the person's identity, NOT denoising the original image.
    */
   private buildKontextInput(options: RunPodKontextOptions): unknown {
     const width = options.width || 1024;
     const height = options.height || 1024;
     const seed = options.seed ?? Math.floor(Math.random() * 2147483647);
     const steps = options.steps || 28;
-    const cfg = options.guidance || 1.0;
+    const cfg = options.guidance || 3.5; // Kontext works well with 3.5 CFG
 
-    // If no reference image, fall back to text-to-image
+    // Text-to-image mode (no reference)
     if (!options.referenceImage) {
       console.log('[RunPod Kontext] No reference image, using text-to-image mode');
       return {
@@ -354,8 +352,8 @@ export class RunPodProvider {
           "1": {
             "class_type": "UNETLoader",
             "inputs": {
-              "unet_name": "flux1-kontext-dev-fp8.safetensors",
-              "weight_dtype": "fp8_e4m3fn"
+              "unet_name": "flux1-kontext-dev.safetensors",
+              "weight_dtype": "default"
             }
           },
           "2": {
@@ -411,14 +409,10 @@ export class RunPodProvider {
       base64Image = base64Image.split(',')[1];
     }
 
-    // denoise controls how much of the reference is preserved:
-    // 0.0 = exact copy, 1.0 = ignore reference completely
-    // 0.85-0.95 = keep face/identity but allow new poses/scenes
-    const denoise = 0.90;
+    console.log('[RunPod Kontext] Using ReferenceLatent mode for character consistency');
 
-    console.log(`[RunPod Kontext] Using img2img mode with denoise=${denoise}`);
-
-    // Standard img2img workflow - load reference, encode to latent, denoise partially
+    // TRUE Kontext workflow using ReferenceLatent node
+    // This preserves identity while generating NEW compositions
     return {
       images: [
         {
@@ -427,7 +421,7 @@ export class RunPodProvider {
         }
       ],
       workflow: {
-        // Load UNET (Kontext model)
+        // Load Kontext model (full precision for best quality)
         "1": {
           "class_type": "UNETLoader",
           "inputs": {
@@ -435,7 +429,7 @@ export class RunPodProvider {
             "weight_dtype": "fp8_e4m3fn"
           }
         },
-        // Load CLIP models
+        // Load CLIP encoders
         "2": {
           "class_type": "DualCLIPLoader",
           "inputs": {
@@ -452,56 +446,72 @@ export class RunPodProvider {
         // Load reference image
         "4": {
           "class_type": "LoadImage",
-          "inputs": {
-            "image": "reference.png"
-          }
+          "inputs": { "image": "reference.png" }
         },
-        // Encode reference to latent
+        // Scale reference to optimal Kontext resolution
         "5": {
+          "class_type": "FluxKontextImageScale",
+          "inputs": { "image": ["4", 0] }
+        },
+        // Encode reference to latent space
+        "6": {
           "class_type": "VAEEncode",
           "inputs": {
-            "pixels": ["4", 0],
+            "pixels": ["5", 0],
             "vae": ["3", 0]
           }
         },
         // Encode prompt
-        "6": {
+        "7": {
           "class_type": "CLIPTextEncode",
           "inputs": {
             "text": options.prompt,
             "clip": ["2", 0]
           }
         },
-        // KSampler with high denoise to allow pose changes while keeping identity hints
-        "7": {
+        // KEY NODE: ReferenceLatent attaches identity to conditioning
+        "8": {
+          "class_type": "ReferenceLatent",
+          "inputs": {
+            "conditioning": ["7", 0],
+            "latent": ["6", 0]
+          }
+        },
+        // Empty latent for NEW image generation
+        "9": {
+          "class_type": "EmptySD3LatentImage",
+          "inputs": { "width": width, "height": height, "batch_size": 1 }
+        },
+        // KSampler with full denoise - generates NEW image with reference identity
+        "10": {
           "class_type": "KSampler",
           "inputs": {
             "model": ["1", 0],
-            "positive": ["6", 0],
-            "negative": ["6", 0],
-            "latent_image": ["5", 0],
+            "positive": ["8", 0],
+            "negative": ["8", 0],
+            "latent_image": ["9", 0],
             "seed": seed,
             "steps": steps,
             "cfg": cfg,
             "sampler_name": "euler",
             "scheduler": "simple",
-            "denoise": denoise
+            "denoise": 1.0
           }
         },
         // VAE Decode
-        "8": {
+        "11": {
           "class_type": "VAEDecode",
           "inputs": {
-            "samples": ["7", 0],
+            "samples": ["10", 0],
             "vae": ["3", 0]
           }
         },
         // Save Image
-        "9": {
+        "12": {
           "class_type": "SaveImage",
           "inputs": {
-            "images": ["8", 0],
-            "filename_prefix": "kontext_img2img"
+            "images": ["11", 0],
+            "filename_prefix": "kontext_ref"
           }
         }
       }

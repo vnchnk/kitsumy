@@ -1,0 +1,26 @@
+# ComfyUI extra model paths configuration
+# This file tells ComfyUI where to find models on the network volume
+#
+# For RunPod Serverless: models are at /runpod-volume/models
+# For RunPod Pod: models are at /workspace/models
+#
+# Copy this file to ComfyUI root directory
+
+runpod_volume:
+    base_path: /runpod-volume/models
+
+    # FLUX Kontext model
+    diffusion_models: diffusion_models/
+
+    # Text encoders (CLIP L + T5XXL)
+    clip: clip/
+
+    # VAE
+    vae: vae/
+
+# Alternative paths for Pod (uncomment if using Pod instead of Serverless)
+# runpod_workspace:
+#     base_path: /workspace/models
+#     diffusion_models: diffusion_models/
+#     clip: clip/
+#     vae: vae/
