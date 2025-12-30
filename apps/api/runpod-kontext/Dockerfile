@@ -12,6 +12,9 @@ FROM timpietruskyblibla/runpod-worker-comfy:3.1.0-base
 # Install huggingface_hub for model downloads
 RUN pip install --no-cache-dir huggingface_hub
 
+# Update ComfyUI to latest version (includes FluxKontextImageScale, ReferenceLatent nodes)
+RUN cd /comfyui && git pull origin master
+
 # Copy init script and download script
 # Note: paths relative to repo root (RunPod builds from root)
 COPY apps/api/runpod-kontext/scripts/init_models.sh /init_models.sh
