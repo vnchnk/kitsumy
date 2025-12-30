@@ -13,16 +13,14 @@ FROM timpietruskyblibla/runpod-worker-comfy:3.1.0-base
 RUN pip install --no-cache-dir huggingface_hub
 
 # Copy init script and download script
-COPY scripts/init_models.sh /init_models.sh
-COPY scripts/download_models.sh /download_models.sh
-RUN chmod +x /init_models.sh /download_models.sh
+# Note: paths are relative to Dockerfile location (apps/api/runpod-kontext/)
+COPY ./scripts/init_models.sh /init_models.sh
+COPY ./scripts/download_models.sh /download_models.sh
+COPY ./scripts/start.sh /start_custom.sh
+RUN chmod +x /init_models.sh /download_models.sh /start_custom.sh
 
 # Set environment variables
 ENV MODEL_TYPE=fp8
 # HF_TOKEN should be passed at runtime for downloads without volume
-
-# Override the start command to run init first
-COPY scripts/start.sh /start_custom.sh
-RUN chmod +x /start_custom.sh
 
 CMD ["/start_custom.sh"]
