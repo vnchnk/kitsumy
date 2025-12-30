@@ -13,10 +13,10 @@ FROM timpietruskyblibla/runpod-worker-comfy:3.1.0-base
 RUN pip install --no-cache-dir huggingface_hub
 
 # Copy init script and download script
-# Note: paths are relative to Dockerfile location (apps/api/runpod-kontext/)
-COPY ./scripts/init_models.sh /init_models.sh
-COPY ./scripts/download_models.sh /download_models.sh
-COPY ./scripts/start.sh /start_custom.sh
+# Note: paths relative to repo root (RunPod builds from root)
+COPY apps/api/runpod-kontext/scripts/init_models.sh /init_models.sh
+COPY apps/api/runpod-kontext/scripts/download_models.sh /download_models.sh
+COPY apps/api/runpod-kontext/scripts/start.sh /start_custom.sh
 RUN chmod +x /init_models.sh /download_models.sh /start_custom.sh
 
 # Set environment variables
